@@ -1,0 +1,9 @@
+# Build and deployment artifacts
+dist/
+test-infra/
+
+# Environment variables (secrets)
+.env
+
+# Test infrastructure artifacts
+.playwright-mcp/

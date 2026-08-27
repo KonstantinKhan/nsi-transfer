@@ -1,0 +1,70 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+.DS_Store
+dist
+dist-ssr
+coverage
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+*.tsbuildinfo
+
+.eslintcache
+
+# Cypress
+/cypress/videos/
+/cypress/screenshots/
+
+# Vitest
+__screenshots__/
+
+# Vite
+*.timestamp-*-*.mjs
+
+
+# Системные файлы
+.DS_Store
+
+# Папки и файлы, которые не нужно коммитить
+node_modules/  # Зависимости проекта — не должны лежать в репозитории
+/dist          # Скомпилированный код — создаётся при сборке, не нужна в исходниках
+
+# Файлы окружения (переменные)
+.env
+.env.local
+.env.*.local
+
+# Логи
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Настройки редакторов
+.vscode/  # Настройки Visual Studio Code
+*.suo  # Файлы блокировки сессии Visual Studio
+*.ntvs*  # Другие файлы Visual Studio
+*.njsproj  # Файлы проектов Webpack
+*.sln  # Файлы решений
+*.sw?  # Другие временные файлы редакторов
+
+package-lock.json
+
+.nymc/

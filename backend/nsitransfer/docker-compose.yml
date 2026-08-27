@@ -1,0 +1,16 @@
+services:
+  nsitransfer:
+    image: ${DOCKER_REGISTRY-}nsitransfer
+    build:
+      context: .
+      dockerfile: NsiTransfer/Dockerfile
+    container_name: nsitransfer_server
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - ./config/configuration.json:/app/configuration.json
+      - ./logs:/app/Logs

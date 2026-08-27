@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NsiTransfer.DAL\NsiTransfer.DAL.csproj" />
+    <ProjectReference Include="..\NsiTransfer.Contract\NsiTransfer.Contract.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Ascon.Polynom.Web.Api.Data">
+      <HintPath>..\libs\AsconLibs-05-06-26\Ascon.Polynom.Web.Api.Data.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NsiTransfer.Tests" />
+  </ItemGroup>
+
+</Project>

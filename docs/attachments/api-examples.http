@@ -1,0 +1,337 @@
+### =====================================================================
+###  NsiTransfer — документированные HTTP-запросы к сервису
+###  Базовый URL: http://<HOST>:8080  (Kestrel, см. appsettings.json)
+###  Авторизация: cookie "auth_access_token" (HttpOnly) ИЛИ
+###               заголовок "Authorization: Bearer <AccessToken>"
+###  Все защищённые endpoint-ы помечены [Authorize].
+###  Импортируется в VS Code (REST Client) / JetBrains Rider / curl.
+### =====================================================================
+
+@host = http://localhost:8080
+@syncBaseUrl = {{host}}/api/polynom-sync
+@authBaseUrl  = {{host}}/api/auth
+@utilsBaseUrl = {{host}}/api/polynom-utils
+@adminBaseUrl = {{host}}/api/admin-panel
+@cfgBaseUrl   = {{host}}/api/configuration
+
+
+### ---------------------------------------------------------------------
+###  Аутентификация (контроллер AuthController, route /api/auth)
+###  Эти endpoint-ы НЕ проксируют Polynom-сессию в NsiTransfer-сторону,
+###  а устанавливают собственные cookies NsiTransfer, в которые кладутся
+###  Polynom access/refresh токены.
+### ---------------------------------------------------------------------
+
+### A.1 Получить список хранилищ Полинома (для выбора БД при логине)
+#  Метод: GET  | Авторизация: нет
+GET {{authBaseUrl}}/storages
+Accept: application/json
+
+### A.2 Вход — обмен логин/пароль на пару токенов
+#  Метод: POST | Авторизация: нет
+#  Ответ: 200 + JSON профиля; одновременно устанавливаются cookies:
+#         auth_access_token, auth_refresh_token (HttpOnly), auth_expires_at (JS-читаемый)
+POST {{authBaseUrl}}/signin
+Content-Type: application/json
+
+{
+  "login": "<LOGIN>",
+  "password": "<PASSWORD>"
+}
+
+### A.3 Обновить access token по refresh-токену из cookie
+#  Метод: POST | Авторизация: нет (нужна cookie auth_refresh_token)
+POST {{authBaseUrl}}/refresh-token
+Accept: application/json
+
+### A.4 Выход — инвалидация сессии в Полиноме, очистка cookies
+#  Метод: DELETE | Авторизация: [Authorize]
+DELETE {{authBaseUrl}}/signout
+Cookie: auth_access_token=<ACCESS_TOKEN>
+
+
+### ---------------------------------------------------------------------
+###  Синхронизация (контроллер PolynomSyncController, route /api/polynom-sync)
+### ---------------------------------------------------------------------
+
+### S.1 Запустить синхронизацию С ОЖИДАНИЕМ ответа (синхронный режим).
+#  Метод: POST | Авторизация: [Authorize]
+#  Тело: { "initiatorName": "..." } — кто запустил (UI передаёт логин/имя пользователя)
+#  Коды:
+#    200 — SendingModel успешно завершённого отправления
+#    409 — уже есть активная синхронизация (Conflict)
+#    500 — ошибка синхронизации (ProblemDetails с SendingModel внутри detail)
+POST {{syncBaseUrl}}/start-data-collection-and-wait
+Content-Type: application/json
+
+{
+  "initiatorName": "<ИМЯ ИНИЦИАТОРА>"
+}
+
+### S.2 Запустить синхронизацию В ФОНОВОМ режиме (постановка в очередь SyncTaskQueue).
+#  Метод: POST | Авторизация: [Authorize]
+#  Коды: 200 (SendingModel создана, статус Initiated) / 409 / 500
+POST {{syncBaseUrl}}/start-data-collection-in-background
+Content-Type: application/json
+
+{
+  "initiatorName": "<ИМЯ ИНИЦИАТОРА>"
+}
+
+### S.3 Получить страницу списка отправлений (курсорная пагинация).
+#  Метод: GET | Авторизация: нет (но логически должен быть [Authorize])
+#  Параметры:
+#    pageSize           — int, 1..200, по умолчанию 30
+#    cursorInitiatedAt  — ISO 8601, опционально (только вместе с cursorId)
+#    cursorId           — Guid, опционально (только вместе с cursorInitiatedAt)
+#  Ответ: { "items": [SendingModel], "hasMore": bool }
+GET {{syncBaseUrl}}/sendings?pageSize=30
+Accept: application/json
+
+### S.3а Следующая страница по курсору
+GET {{syncBaseUrl}}/sendings?pageSize=30&cursorInitiatedAt=2026-07-15T10:00:00Z&cursorId=11111111-2222-3333-4444-555555555555
+Accept: application/json
+
+### S.4 Получить конкретное отправление по Id
+#  Метод: GET | Авторизация: нет
+GET {{syncBaseUrl}}/sending?sendingId=11111111-2222-3333-4444-555555555555
+Accept: application/json
+
+### S.5 Подписка на SSE-события ВСЕХ отправлений (общий поток)
+#  Метод: GET | Авторизация: [Authorize]
+#  Тип ответа: text/event-stream
+#  События: StatusChanged, MessageCreated, MessageEmpty, ObjectsCollected,
+#           MessagePublished, MessageFailed, SendingCompleted, Retry*,
+#           Error, Closed, а также комментарии ": heartbeat".
+#  Для curl: curl -N -H "Authorization: Bearer <TOKEN>" {{syncBaseUrl}}/listen-for-all-sync-events
+GET {{syncBaseUrl}}/listen-for-all-sync-events
+Accept: text/event-stream
+
+### S.6 Подписка на SSE-события КОНКРЕТНОГО отправления (heartbeat каждые 15 сек)
+#  Метод: GET | Авторизация: [Authorize]
+#  Если SendingId неизвестен — 404 Not Found
+GET {{syncBaseUrl}}/listen-for-sync-events?sendingId=11111111-2222-3333-4444-555555555555
+Accept: text/event-stream
+
+
+### ---------------------------------------------------------------------
+###  Утилиты Полинома (контроллер PolynomUtilsController, route /api/polynom-utils)
+###  Прямые запросы к API Полинома для отладки/диагностики.
+### ---------------------------------------------------------------------
+
+### U.1 Получить изменения объектов в периоде времени
+#  Метод: GET | Авторизация: [Authorize]
+#  Параметры: start, end (ISO 8601), pageNumber, pageSize (по умолчанию 100)
+GET {{utilsBaseUrl}}/modified-in-time-period?start=2026-08-01T00:00:00Z&end=2026-08-06T00:00:00Z&pageNumber=1&pageSize=100
+Accept: application/json
+
+### U.2 Снимок объектов на конкретный момент времени
+GET {{utilsBaseUrl}}/modified-in-concrete-time?time=2026-08-06T12:00:00Z&pageNumber=1&pageSize=100
+Accept: application/json
+
+### U.3 Простой поиск по подстроке в названии
+GET {{utilsBaseUrl}}/name-contains-substring?substring=%D0%BA%D0%BE%D0%B4&pageNumber=1&pageSize=100
+Accept: application/json
+
+
+### ---------------------------------------------------------------------
+###  Админ-панель (контроллер AdminController, route /api/admin-panel)
+### ---------------------------------------------------------------------
+
+### AP.1 Получить узлы первого уровня классификации из Полинома
+#  Метод: GET | Авторизация: [Authorize]
+#  Возвращает List<ClassificationTreeNode> для выбора целевого справочника.
+GET {{adminBaseUrl}}/reference/first-layer
+Accept: application/json
+
+### AP.2 Установить целевой узел классификации (ЗАКОММЕНТИРОВАН в коде, см. AdminController)
+# # POST {{adminBaseUrl}}/reference/target-node
+# # Content-Type: application/json
+# #
+# # {
+# #   "nodeObjectId": 61,
+# #   "nodeTypeId": 48,
+# #   "nodeName": "Коды"
+# # }
+
+
+### ---------------------------------------------------------------------
+###  Управление конфигурацией (контроллер ConfigurationController, route /api/configuration)
+###  Все endpoint-ы [Authorize]. Запись идёт через JsonConfigurationWriter
+###  с валидацией AppConfigurationValidator (рекурсивно по DataAnnotations).
+###  После успешной записи валидная конфигурация применится через
+###  OptionsMonitor.OnChange (hot-reload), в т.ч. для планировщика.
+### ---------------------------------------------------------------------
+
+### C.1 Получить ВСЮ конфигурацию (AppConfiguration)
+#  Коды: 200 | 503 (конфигурация на диске невалидна)
+GET {{cfgBaseUrl}}
+Accept: application/json
+
+### C.2 Полная замена конфигурации (PUT всей AppConfiguration)
+PUT {{cfgBaseUrl}}
+Content-Type: application/json
+
+{
+  "TargetReferenceNode": {
+    "TargetReferenceNodeObjectId": 61,
+    "TargetReferenceNodeTypeId": 48,
+    "TargetReferenceNodeName": "Коды"
+  },
+  "RabbitMqQueues": {
+    "NsiTransferExchangeName": "<EXCHANGE_NAME>",
+    "PolynomSearchResultsQueueName": "polynom.search.results"
+  },
+  "RabbitMqRetryParams": {
+    "MaxRetryAttempts": 5,
+    "RetryIntervalInSeconds": 10,
+    "ConfirmationTimeOutInSeconds": 30
+  },
+  "PolynomApiSyncOptions": {
+    "StartSyncWithIntervalMinutes": 15,
+    "ConceptNameForClassificationData": "<ИМЯ_ПОНЯТИЯ_ДАННЫЕ_КЛАССИФИКАТОРА>",
+    "ClassificationCodePropertyName": "<ИМЯ_СВОЙСТВА_КОД_КЛАССИФИКАТОРА>",
+    "OwnContractName": "<ИМЯ_ПОНЯТИЯ_СОБСТВЕННЫЕ_СВОЙСТВА>",
+    "MinCodePropertyName": "<ИМЯ_СВОЙСТВА_MIN>",
+    "MaxCodePropertyName": "<ИМЯ_СВОЙСТВА_MAX>"
+  },
+  "EmailNotifications": {
+    "ErrorRecipients": ["admin@example.com", "ops@example.com"]
+  }
+}
+
+### --- Секция: TargetReferenceNode ---
+GET {{cfgBaseUrl}}/target-reference-node
+Accept: application/json
+
+PUT {{cfgBaseUrl}}/target-reference-node
+Content-Type: application/json
+
+{
+  "TargetReferenceNodeObjectId": 61,
+  "TargetReferenceNodeTypeId": 48,
+  "TargetReferenceNodeName": "Коды"
+}
+
+### --- Секция: RabbitMqQueues ---
+GET {{cfgBaseUrl}}/rabbitmq-queues
+Accept: application/json
+
+PUT {{cfgBaseUrl}}/rabbitmq-queues
+Content-Type: application/json
+
+{
+  "NsiTransferExchangeName": "<EXCHANGE_NAME>",
+  "PolynomSearchResultsQueueName": "polynom.search.results"
+}
+
+### --- Секция: RabbitMqRetryParams ---
+GET {{cfgBaseUrl}}/rabbitmq-retry-params
+Accept: application/json
+
+PUT {{cfgBaseUrl}}/rabbitmq-retry-params
+Content-Type: application/json
+
+{
+  "MaxRetryAttempts": 5,
+  "RetryIntervalInSeconds": 10,
+  "ConfirmationTimeOutInSeconds": 30
+}
+
+### --- Секция: PolynomApiSyncOptions ---
+GET {{cfgBaseUrl}}/polynom-api-sync-options
+Accept: application/json
+
+PUT {{cfgBaseUrl}}/polynom-api-sync-options
+Content-Type: application/json
+
+{
+  "StartSyncWithIntervalMinutes": 15,
+  "ConceptNameForClassificationData": "<ИМЯ_ПОНЯТИЯ_ДАННЫЕ_КЛАССИФИКАТОРА>",
+  "ClassificationCodePropertyName": "<ИМЯ_СВОЙСТВА_КОД_КЛАССИФИКАТОРА>",
+  "OwnContractName": "<ИМЯ_ПОНЯТИЯ_СОБСТВЕННЫЕ_СВОЙСТВА>",
+  "MinCodePropertyName": "<ИМЯ_СВОЙСТВА_MIN>",
+  "MaxCodePropertyName": "<ИМЯ_СВОЙСТВА_MAX>"
+}
+
+### --- Секция: EmailNotifications ---
+GET {{cfgBaseUrl}}/email-notifications
+Accept: application/json
+
+PUT {{cfgBaseUrl}}/email-notifications
+Content-Type: application/json
+
+{
+  "ErrorRecipients": ["admin@example.com", "ops@example.com"]
+}
+
+
+### =====================================================================
+###  Примеры ошибок (ProblemDetails, application/problem+json)
+### =====================================================================
+
+#  400 ConfigurationValidationException (PUT конфигурации):
+#  {
+#    "title": "Ошибка валидации конфигурации",
+#    "detail": "Параметр 'StartSyncWithIntervalMinutes' (Интервал...) должен быть больше 0.; ...",
+#    "errors": { "AppConfiguration": ["..."] }
+#  }
+
+#  409 Conflict при повторном запуске:
+#  {
+#    "title": "Попытка запуска синхронизации во время выполнения другой синхронизации",
+#    "detail": "Синхронизация уже запущена. Дождитесь завершения текущего процесса..."
+#  }
+
+#  500 Internal Server Error:
+#  {
+#    "message": "Произошла внутренняя ошибка сервера.",
+#    "details": "<в Dev — полный stack; в Prod — сообщение с временем>",
+#    "traceId": "<TraceIdentifier>"
+#  }
+
+
+### =====================================================================
+###  Формат SendingModel (ответ S.1/S.2/S.3/S.4)
+### =====================================================================
+#  {
+#    "id": "11111111-2222-3333-4444-555555555555",
+#    "initiatedAt": "2026-08-06T12:00:00.000Z",
+#    "endedAt": "2026-08-06T12:00:42.000Z",
+#    "initiatorName": "Фоновый сервис",
+#    "statusId": 3,           // SendingStatusEnum
+#    "targetReferenceNodeName": "Коды",
+#    "messages": [
+#      {
+#        "id": 123,
+#        "startedCollectionFromPolynomAt": "...",
+#        "finishedCollectionFromPolynomAt": "...",
+#        "sentAtQueue": "...",
+#        "polynomObjectsAmountInMessage": 42,
+#        "publishingResultId": 1,    // RabbitMqPublishingResultEnum
+#        "messageType": 1,           // MessageTypeEnum
+#        "messageFailure": null      // MessageFailureModel | null
+#      }
+#    ]
+#  }
+
+
+### =====================================================================
+###  SSE-события (ответ S.5/S.6) — формат кадра
+### =====================================================================
+#  event: <EventType>
+#  data: {"sendingId":"<GUID>","eventType":"<EventType>","payload":{ ... }}
+#
+#  Поддерживаемые EventType:
+#    StatusChanged      — смена статуса Sending (payload: { status, sendingModel?, endedAt? })
+#    MessageCreated     — создан новый Message в БД (payload: { id, startedCollectionFromPolynomAt, pageNumber })
+#    MessageEmpty       — страница поиска пуста, Message удалён (payload: { id })
+#    ObjectsCollected   — завершён сбор свойств объектов (payload: { id, objectsCount, finishedCollectionFromPolynomAt })
+#    MessagePublished   — успешная публикация в RabbitMQ (payload: { id, sentAtQueue })
+#    MessageFailed      — сбой сообщения (payload: { id, error, errorStatus })
+#    SendingCompleted   — отправление завершено успешно (payload: { endedAt })
+#    RetryMessageCreated / RetryObjectsCollected / RetryMessagePublished / RetryMessageEmpty
+#    Error              — критическая ошибка (payload: { message })
+#    Closed             — сервер закрыл поток конкретного Sending
+#
+#  Heartbeat (только для listen-for-sync-events): строка ": heartbeat\n\n" каждые 15 сек.

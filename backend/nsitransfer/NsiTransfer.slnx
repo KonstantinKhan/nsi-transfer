@@ -1,0 +1,10 @@
+<Solution>
+  <Project Path="NsiTransfer.Tests/NsiTransfer.Tests.csproj" Id="8bbd3949-1dc2-4af7-8019-0a1cd4a6fc1a" />
+  <Project Path="NsiTransfer/NsiTransfer.csproj" />
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
+  <Project Path="NsiTransfer.BLL/NsiTransfer.BLL.csproj" />
+  <Project Path="NsiTransfer.DAL/NsiTransfer.DAL.csproj" />
+  <Project Path="NsiTransfer.Contract/NsiTransfer.Contract.csproj" />
+</Solution>

@@ -1,0 +1,29 @@
+{
+  "AppConfiguration": {
+    "TargetReferenceNode": {
+      "TargetReferenceNodeObjectId": 0,
+      "TargetReferenceNodeTypeId": 0,
+      "TargetReferenceNodeName": ""
+    },
+    "RabbitMqQueues": {
+      "NsiTransferExchangeName": "nsitransfer.exchange",
+      "PolynomSearchResultsQueueName": "polynom.search.results"
+    },
+    "RabbitMqRetryParams": {
+      "MaxRetryAttempts": 3,
+      "RetryIntervalInSeconds": 10,
+      "ConfirmationTimeOutInSeconds": 30
+    },
+    "PolynomApiSyncOptions": {
+      "StartSyncWithIntervalMinutes": 15,
+      "ConceptNameForClassificationData": "Данные классификатора",
+      "ClassificationCodePropertyName": "Код классификатора",
+      "OwnContractName": "Собственные свойства",
+      "MinCodePropertyName": "Минимальное значение кода",
+      "MaxCodePropertyName": "Максимальное значение кода"
+    },
+    "EmailNotifications": {
+      "ErrorRecipients": []
+    }
+  }
+}

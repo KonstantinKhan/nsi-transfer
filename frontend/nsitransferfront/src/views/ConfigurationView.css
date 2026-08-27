@@ -1,0 +1,64 @@
+.config-container {
+  padding: 10px clamp(20px, 5vw, 50px);
+  height: 100%;
+  overflow-y: auto;
+  position: relative;
+}
+
+.config-menu {
+  display: flex;
+  flex-direction: column; /* Кнопки в столбик */
+  gap: 15px;
+  max-width: 800px;
+  margin: 15px auto;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  padding: 20px 24px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.menu-item:hover {
+  border-color: #a81b35;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(168, 27, 53, 0.1);
+}
+
+.menu-text h3 {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.menu-text p {
+  margin: 0;
+  font-size: 14px;
+  color: #777;
+}
+
+.menu-chevron {
+  width: 24px;
+  height: 24px;
+  color: #ccc;
+  transition: color 0.2s, transform 0.2s;
+}
+
+.menu-item:hover .menu-chevron {
+  color: #a81b35;
+  transform: translateX(4px);
+}
+
+.config-details {
+  position: relative;
+  max-width: 800px;
+  margin: 10px auto 20px; /* Отступ сверху для кнопки "Назад" */
+}

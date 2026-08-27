@@ -1,0 +1,33 @@
+name: nsitransfer
+
+services:
+  nsitransfer:
+    build:
+      context: ./backend/nsitransfer
+      dockerfile: NsiTransfer/Dockerfile
+    container_name: nsitransfer_server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      # Конфиг монтируется директорией (не одиночным файлом): атомарная запись через File.Move
+      # поверх single-file bind mount даёт EBUSY "Device or resource busy"
+      CONFIG_FILE_PATH: /app/config-data/configuration.json
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./backend/nsitransfer/config:/app/config-data
+      - ./backend/nsitransfer/logs:/app/Logs
+
+  nsitransferfront:
+    build:
+      context: ./frontend/nsitransferfront
+      args:
+        # Vite инлайнит значение в бандл при сборке. Менять только с пересборкой:
+        #   docker compose build nsitransferfront
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080/api}
+    container_name: nsitransferfront_web
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"

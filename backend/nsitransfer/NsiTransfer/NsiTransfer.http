@@ -1,0 +1,6 @@
+@NsiTransfer_HostAddress = http://localhost:5177
+
+GET {{NsiTransfer_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
