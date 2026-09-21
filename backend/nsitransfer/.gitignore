@@ -208,6 +208,9 @@ project.lock.json
 
 # Visual Studio Code
 .vscode/
+# но разрешаем конфиги для запуска
+!.vscode/launch.json
+!.vscode/tasks.json
 
 # Output folder used by Webpack or other FE stuff
 **/node_modules/*

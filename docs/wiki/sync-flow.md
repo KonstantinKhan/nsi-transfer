@@ -402,6 +402,43 @@ data: {"SendingId": "...", "TotalProcessed": 100}
 
 **Важно:** Объект не может одновременно находиться в `PolynomObjects` и `PolynomObjectFailures` для одной пары (ObjectId, TypeId). При успехе ошибка всегда удаляется.
 
+## Фикс: первый запуск отправлял всё хранилище (сентябрь 2026)
+
+**Проблема:** период поиска изменений для sync вычисляется как `[время окончания последнего Completed Sending, сейчас+1мин]` (`SyncUseCases.GetSearchDateTimePeriod`, строки ~411-440). Если для `TargetReferenceNode` ещё ни разу не было завершённого Sending (первый запуск сервиса, БД накатили заново, или сменили `TargetReferenceNode` на новый) — период стартовал с `DateTime.MinValue`. Результат: `GetDiffsInTimePeriod` воспринимал ВСЮ историю изменений справочника как "diff за период" и пытался целиком отправить в брокер.
+
+**Решение:** `SyncUseCases.cs:424` — fallback изменён с `DateTime.MinValue` на `DateTime.UtcNow`:
+```csharp
+var rawTime = lastCompletedSending?.EndedAt ?? DateTime.UtcNow;
+```
+Первый sync для нового `TargetReferenceNode` находит ноль изменений (период `[сейчас, сейчас+1мин]`), завершается как обычный `Completed` Sending — это автоматически становится точкой отсчёта для всех последующих запусков. Работает единообразно для любого триггера "нет истории" (первый запуск сервиса, свежая БД, новый `TargetReferenceNode`) — без отдельного шага сидирования данных перед миграцией.
+
+**Если нужен полный бэкфилл истории** (осознанно, редкий случай) — вручную вставить в БД `Sending` со статусом `Completed` и `EndedAt` в нужной прошлой дате для этого `TargetReferenceNode`, до первого реального запуска sync. Не автоматизировано.
+
+**Файлы:** `NsiTransfer.BLL/UseCases/SyncUseCases.cs:411-440` (`GetSearchDateTimePeriod`)
+
+## Отдельная таблица MessageObjects (сентябрь 2026)
+
+**Проблема:** весь массив объектов отправления хранится одной jsonb-строкой в `Message.SerializedMessage`. При десятках тысяч объектов: неудобно работать в pgAdmin, json-запрос находит весь массив целиком, а не отдельный объект. Полный анализ и рассмотренные варианты — [[architecture-improvements-plan]].
+
+**Решение (по решению пользователя — только новые данные, без миграции старых):** новая таблица `MessageObjects` (Entity `MessageObject`: Id, MessageId — FK на Message с cascade delete, PolynomObjectId, PolynomTypeId, Name, SerializedObject jsonb). Один объект отправления — одна строка. Индексы: MessageId, (PolynomObjectId, PolynomTypeId), Name — можно искать/фильтровать конкретный объект напрямую, без разбора всего массива в pgAdmin/SQL.
+
+**Заполнение:** `SyncUseCases.AddMessageObjectsAsync` — вызывается сразу после сборки `SerializedMessage` (main-цикл, строка ~690, и retry-цикл, строка ~901), проходит по тому же самому списку `objectsWithProperties`/`retryObjectsWithProperties`, для каждого объекта сериализует его отдельно (`JsonSerializer.Serialize(obj, MessageJsonOptions)` — тот же `UnsafeRelaxedJsonEscaping`, что и для всего массива, кириллица не ломается) и добавляет строку через `_unitOfWork.MessageObjects.AddAsync` (без немедленного `SaveChangesAsync` — уезжает вместе с остальными изменениями, которые сохраняются сразу следующей строкой кода). `GroupInfo` ([[classification-code-processor]]) автоматически попадает в per-object JSON, так как устанавливается на объекте раньше, в `ClassificationCodeProcessor.ProcessAsync`.
+
+**Публикация в RabbitMQ не изменена** — источником для брокера остаётся `Message.SerializedMessage`, как и раньше (`RabbitMqPublisher.cs` не трогали); `MessageObjects` — параллельная нормализованная копия только для просмотра/поиска в БД.
+
+**Миграция старых данных:** НЕ делается (осознанное решение пользователя — существующие записи в Messages тестовые). Старые `Message` останутся без строк в `MessageObjects`.
+
+**Найдено adversarial review (НЕ баг этого изменения, существующая проблема кода):** в retry-цикле (`RetryFailedObjectsAsync`) пустое `retryMessage` (когда все retry-объекты отфильтрованы — `retryObjectsWithProperties.Count == 0`) НЕ удаляется — в отличие от main-цикла, где пустой `currentMessage` удаляется явно (`_unitOfWork.Messages.Delete`, строка ~671). Оставляет "пустые" Message-записи в БД (MessageType=Retry, без SerializedMessage/PolynomObjects). Для таких сообщений `AddMessageObjectsAsync` тоже не вызывается (ветка `else` просто уведомляет через `_syncNotifier`, ничего не удаляет). Не исправлялось в рамках этой задачи — вне её объёма, нужно отдельное решение пользователя.
+
+**Файлы:**
+- `MessageObject.cs` (новая сущность), `Message.cs` (навигационное свойство `MessageObjects`)
+- `AppDbContext.cs` (DbSet + fluent config, jsonb + индексы)
+- `IUnitOfWork.cs`, `UnitOfWork.cs` (репозиторий)
+- `SyncUseCases.cs` — `AddMessageObjectsAsync`, вызовы в main- и retry-циклах
+- Миграция: `NsiTransfer.DAL/Migrations/20260907171537_AddMessageObjectsTable.cs`
+
+**Статус:** реализовано 2026-09-07, adversarial review (2 lens'а × verify, haiku) подтвердил корректность cascade-delete и порядка операций (пустые сообщения удаляются ДО вызова `AddMessageObjectsAsync` — строк в MessageObjects для них никогда не создаётся); нашёл несвязанный существующий баг retry-цикла (см. выше). Билд проходит без ошибок.
+
 ## Связанные страницы
 
 - [[architecture]] — Архитектура приложения
@@ -409,4 +446,5 @@ data: {"SendingId": "...", "TotalProcessed": 100}
 - [[polynom-api]] — API Полинома
 - [[rabbitmq]] — Брокер сообщений
 - [[http-logging]] — Логирование запросов
+- [[architecture-improvements-plan]] — План развития архитектуры (все 4 проблемы)
 

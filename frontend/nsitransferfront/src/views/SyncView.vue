@@ -8,6 +8,15 @@
         {{ isSyncing ? 'Запуск...' : 'Начать синхронизацию' }}
       </button>
 
+      <button class="rebuild-cache-btn" @click="handleRebuildGroupCodeCache" :disabled="isRebuildingCache">
+        <svg v-if="isRebuildingCache" class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        {{ isRebuildingCache ? 'Запуск...' : 'Переиндексировать коды классификатора' }}
+      </button>
+
+      <StatusMessage ref="rebuildStatusRef" />
+
       <div v-if="isLoadingList" class="loading-text">Загрузка истории синхронизаций...</div>
 
       <div v-else class="statistics-list">
@@ -36,9 +45,11 @@
 <script setup lang="ts">
 import { ref, computed, reactive, watch, onMounted, onBeforeUnmount } from 'vue';
 import SendingStatistics from '@/components/SendingStatistics.vue';
+import StatusMessage from '@/components/StatusMessage.vue';
 import {
   getSendings,
   startSync,
+  rebuildGroupCodeCache,
   listenForAllSyncEvents,
 } from '@/services/polynomSyncService';
 import type {
@@ -97,6 +108,8 @@ interface PageCursor {
 const PAGE_SIZE = 30;
 
 const isSyncing = ref(false);
+const isRebuildingCache = ref(false);
+const rebuildStatusRef = ref<InstanceType<typeof StatusMessage> | null>(null);
 const isLoadingList = ref(true);
 const isLoadingMore = ref(false);
 const hasMorePages = ref(true);
@@ -360,6 +373,28 @@ const handleStartSync = async () => {
   }
 };
 
+// === Обработчик кнопки переиндексации кеша кодов классификатора ===
+
+const handleRebuildGroupCodeCache = async () => {
+  if (!confirm('Переиндексация обойдёт все группы справочника через Polynom API и может занимать продолжительное время. Запустить?')) {
+    return;
+  }
+
+  isRebuildingCache.value = true;
+  try {
+    const result = await rebuildGroupCodeCache();
+    rebuildStatusRef.value?.show(result.message, 'success');
+  } catch (error) {
+    console.error('Ошибка запуска переиндексации:', error);
+    rebuildStatusRef.value?.show(
+      error instanceof Error ? error.message : 'Не удалось запустить переиндексацию кеша кодов классификатора',
+      'error'
+    );
+  } finally {
+    isRebuildingCache.value = false;
+  }
+};
+
 
 
 // === Загрузка сущностей Sendings (пагинированная) ===
@@ -471,6 +506,37 @@ onBeforeUnmount(() => {
 <style scoped src="./SyncView.css"></style>
 
 <style scoped>
+.rebuild-cache-btn {
+  background-color: #3498db;
+  color: #fff;
+  border: none;
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+  transition: transform 0.1s, box-shadow 0.2s, background-color 0.2s;
+  margin-bottom: 12px;
+}
+
+.rebuild-cache-btn:hover:not(:disabled) {
+  background-color: #2980b9;
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+}
+
+.rebuild-cache-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.rebuild-cache-btn:disabled {
+  background-color: #a9cce3;
+  cursor: not-allowed;
+}
+
 .scroll-sentinel {
   min-height: 1px;
   display: flex;

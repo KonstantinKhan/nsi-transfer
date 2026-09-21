@@ -2,6 +2,7 @@ export const API_CONFIG = {
   BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
   ENDPOINTS: {
     START_SYNC: '/polynom-sync/start-data-collection-in-background',
+    REBUILD_GROUP_CODE_CACHE: '/polynom-sync/rebuild-group-code-cache',
     GET_SENDINGS: '/polynom-sync/sendings',
     GET_SENDING: '/polynom-sync/sending',
     LISTEN_EVENTS: '/polynom-sync/listen-for-sync-events',

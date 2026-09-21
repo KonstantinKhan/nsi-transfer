@@ -16,4 +16,13 @@ public interface IClassificationCodeProcessor
         PolynomObjectWithShortProperties mappedInOutputModel,
         Message currentMessage,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Полная переиндексация персистентного кеша последних кодов классификатора (<see cref="DAL.Db.Entities.ClassificationGroupCodeMax"/>)
+    /// для всех групп целевого справочника (TargetReferenceNode). Обходит иерархию групп через Polynom API один раз,
+    /// для каждой конечной группы с настроенными Min/Max свойствами вычисляет последний выданный код и сохраняет в БД.
+    /// Долгая операция (может занимать десятки минут на больших справочниках) — предназначена для запуска вручную,
+    /// не как часть обычного sync run.
+    /// </summary>
+    Task<Result<GroupCodeCacheRebuildResult>> RebuildGroupCodeCacheAsync(CancellationToken cancellationToken);
 }

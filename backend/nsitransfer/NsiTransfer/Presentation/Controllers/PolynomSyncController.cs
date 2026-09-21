@@ -164,6 +164,43 @@ public class PolynomSyncController : ControllerBase
     }
 
 
+    /// <summary>
+    /// Запустить полную переиндексацию персистентного кеша последних кодов классификатора по всем группам
+    /// </summary>
+    /// <remarks>
+    /// Обходит иерархию групп целевого справочника через Polynom API один раз и сохраняет последний выданный код
+    /// каждой группы в БД. После этого вычисление кода для нового объекта в уже известной группе не требует
+    /// полного обхода группы через API. Долгая операция (может занимать десятки минут) — выполняется в фоне.
+    /// Отказывает, если в данный момент выполняется синхронизация.
+    /// </remarks>
+    [HttpPost("rebuild-group-code-cache")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict, Type = typeof(ProblemDetails))]
+    [SwaggerOperation(OperationId = nameof(RebuildGroupCodeCacheAsync))]
+    public async Task<IActionResult> RebuildGroupCodeCacheAsync()
+    {
+        _logger.LogInformation("Получен запрос на переиндексацию персистентного кеша кодов классификатора");
+
+        var result = await _syncUseCases.RebuildGroupCodeCacheInBackgroundAsync(HttpContext.RequestAborted);
+
+        if (result.IsSuccess)
+        {
+            _logger.LogInformation("Фоновая переиндексация кеша кодов классификатора запущена");
+            return Ok(new { message = "Переиндексация запущена в фоне. Результат см. в логах приложения." });
+        }
+
+        _logger.LogWarning("Не удалось запустить переиндексацию кеша кодов классификатора: {ErrorMessage}", result.ErrorMessage);
+
+        return Conflict(new ProblemDetails
+        {
+            Status = StatusCodes.Status409Conflict,
+            Title = "Не удалось запустить переиндексацию кеша кодов классификатора",
+            Detail = result.ErrorMessage,
+            Instance = HttpContext.Request.Path
+        });
+    }
+
     [HttpGet("listen-for-all-sync-events")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]

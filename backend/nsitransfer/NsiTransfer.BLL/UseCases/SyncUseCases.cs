@@ -49,6 +49,11 @@ internal class SyncUseCases : ISyncUseCases
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    private static readonly JsonSerializerOptions MessageJsonOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     public SyncUseCases(
         IUnitOfWork unitOfWork,
         IPolynomApiService polynomApiService,
@@ -282,6 +287,62 @@ internal class SyncUseCases : ISyncUseCases
         return (Result.Success(), MapToModel(sendingResult.Data!));
     }
 
+    public async Task<Result> RebuildGroupCodeCacheInBackgroundAsync(CancellationToken cancellationToken = default)
+    {
+        var hasActiveSync = await IsThereAlreadyActiveSync(cancellationToken);
+        if (!hasActiveSync.IsSuccess)
+        {
+            return $"Нельзя запустить переиндексацию кеша кодов классификатора во время выполнения синхронизации: {hasActiveSync.ErrorMessage}";
+        }
+
+        await _syncTaskQueue.QueueBackgroundWorkItem(async (sp, ct) =>
+        {
+            using var scope = sp.CreateScope();
+            var scopedProcessor = scope.ServiceProvider.GetRequiredService<IClassificationCodeProcessor>();
+            var scopedLogger = scope.ServiceProvider.GetRequiredService<ILogger<SyncUseCases>>();
+
+            var rebuildResult = await scopedProcessor.RebuildGroupCodeCacheAsync(ct);
+
+            if (!rebuildResult.IsSuccess)
+            {
+                scopedLogger.LogError("Переиндексация кеша кодов классификатора завершилась ошибкой: {Error}", rebuildResult.ErrorMessage);
+                return;
+            }
+
+            scopedLogger.LogInformation(
+                "Переиндексация кеша кодов классификатора завершена. Проиндексировано: {Indexed}, пропущено: {Skipped}, с ошибками: {Errors}",
+                rebuildResult.Data!.GroupsIndexed, rebuildResult.Data.GroupsSkippedNotAClassificationGroup, rebuildResult.Data.GroupsWithErrors);
+
+            if (rebuildResult.Data.Errors.Count > 0)
+            {
+                scopedLogger.LogWarning("Ошибки при переиндексации кеша кодов классификатора: {Errors}", string.Join("; ", rebuildResult.Data.Errors));
+            }
+        });
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Добавляет каждый объект отправления отдельной строкой в MessageObjects (нормализованная копия элементов
+    /// массива Message.SerializedMessage) — решает проблему работы с большими отправлениями в pgAdmin и поиска
+    /// конкретного объекта по json-запросу. Только для новых сообщений, без миграции ранее накопленных данных.
+    /// Не влияет на публикацию в RabbitMQ — источник для брокера остаётся Message.SerializedMessage.
+    /// </summary>
+    private async Task AddMessageObjectsAsync(Message message, List<PolynomObjectWithShortProperties> objects, CancellationToken cancellationToken)
+    {
+        foreach (var obj in objects)
+        {
+            await _unitOfWork.MessageObjects.AddAsync(new MessageObject
+            {
+                Message = message,
+                PolynomObjectId = obj.ObjectId,
+                PolynomTypeId = obj.TypeId,
+                Name = obj.Name,
+                SerializedObject = JsonSerializer.Serialize(obj, MessageJsonOptions)
+            }, cancellationToken);
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     //  Создание Sending и подготовка периода
     // ═══════════════════════════════════════════════════════════════════════════
@@ -357,11 +418,15 @@ internal class SyncUseCases : ISyncUseCases
                 predicate: s => s.StatusId == SendingStatusEnum.Completed
                     && s.TargetReferenceNode.ObjectId == _targetRefNode.CurrentValue.TargetReferenceNodeObjectId
                     && s.TargetReferenceNode.TypeId == _targetRefNode.CurrentValue.TargetReferenceNodeTypeId,
-                orderBy: sq => sq.OrderByDescending(s => s.InitiatedAt),
+                orderBy: sq => sq.OrderByDescending(s => s.EndedAt),
                 cancellationToken: cancellationToken);
 
-            var rawTime = lastCompletedSending?.InitiatedAt ?? DateTime.MinValue;
-            lastCollectionStartedAt = rawTime.AddTicks(-(rawTime.Ticks % TimeSpan.TicksPerSecond));
+            // Первый sync для этого TargetReferenceNode (ни одного Completed Sending ещё не было) — стартуем
+            // период с текущего момента, а не с DateTime.MinValue. Иначе первый запуск воспринимает ВСЮ историю
+            // изменений справочника как "diff за период" и пытается отправить в брокер всё хранилище целиком.
+            // Если реально нужен полный первичный бэкфилл — см. docs/wiki/sync-flow.md, раздел про первый запуск.
+            var rawTime = lastCompletedSending?.EndedAt ?? DateTime.UtcNow;
+            lastCollectionStartedAt = rawTime.AddTicks((TimeSpan.TicksPerSecond - (rawTime.Ticks % TimeSpan.TicksPerSecond)) % TimeSpan.TicksPerSecond);
         }
         catch (Exception ex)
         {
@@ -647,8 +712,11 @@ internal class SyncUseCases : ISyncUseCases
 
             // ── Сериализация и сохранение ────────────────────────────────────
             currentMessage.FinishedCollectionFromPolynomAt = DateTime.UtcNow;
-            currentMessage.SerializedMessage = JsonSerializer.Serialize(objectsWithProperties);
+            currentMessage.SerializedMessage = JsonSerializer.Serialize(objectsWithProperties, MessageJsonOptions);
+            _logger.LogInformation("[MESSAGE SERIALIZED] Current message preview (first 1500 chars): {MessagePreview}",
+                currentMessage.SerializedMessage.Length > 1500 ? currentMessage.SerializedMessage[..1500] : currentMessage.SerializedMessage);
             currentMessage.PolynomObjects = objectsLogs;
+            await AddMessageObjectsAsync(currentMessage, objectsWithProperties, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             await _syncNotifier.NotifyAsync(sending.Id, new SyncEvent("ObjectsCollected", new
@@ -856,8 +924,11 @@ internal class SyncUseCases : ISyncUseCases
         if (retryObjectsWithProperties.Count > 0)
         {
             retryMessage.FinishedCollectionFromPolynomAt = DateTime.UtcNow;
-            retryMessage.SerializedMessage = JsonSerializer.Serialize(retryObjectsWithProperties);
+            retryMessage.SerializedMessage = JsonSerializer.Serialize(retryObjectsWithProperties, MessageJsonOptions);
+            _logger.LogInformation("[MESSAGE SERIALIZED] Retry message preview (first 1500 chars): {MessagePreview}",
+                retryMessage.SerializedMessage.Length > 1500 ? retryMessage.SerializedMessage[..1500] : retryMessage.SerializedMessage);
             retryMessage.PolynomObjects = retryObjectsLogs;
+            await AddMessageObjectsAsync(retryMessage, retryObjectsWithProperties, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             await _syncNotifier.NotifyAsync(sending.Id, new SyncEvent("RetryObjectsCollected", new

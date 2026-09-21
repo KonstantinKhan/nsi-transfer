@@ -61,6 +61,25 @@ export const startSync = async (): Promise<SendingModel> => {
 };
 
 
+/**
+ * Запустить полную переиндексацию персистентного кеша последних кодов классификатора
+ * по всем группам целевого справочника. Долгая фоновая операция — эндпоинт отвечает сразу,
+ * результат (сколько групп проиндексировано/пропущено/с ошибками) смотреть в логах сервера.
+ * Отказывает (409), если сейчас выполняется синхронизация.
+ */
+export const rebuildGroupCodeCache = async (): Promise<{ message: string }> => {
+  const response = await apiFetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.REBUILD_GROUP_CODE_CACHE}`, {
+    method: 'POST'
+  });
+
+  if (!response.ok) {
+    await handleApiError(response, 'Ошибка запуска переиндексации кеша кодов классификатора');
+  }
+
+  return response.json() as Promise<{ message: string }>;
+};
+
+
 export const listenForAllSyncEvents = (
   handlers: AllSyncEventHandlers
 ): EventSource => {

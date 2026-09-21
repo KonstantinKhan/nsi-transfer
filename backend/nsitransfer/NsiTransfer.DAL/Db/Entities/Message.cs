@@ -20,5 +20,6 @@ public class Message
     //public int PolynomObjectsCount { get; set; }
 
     public ICollection<PolynomObject> PolynomObjects { get; set; }
+    public ICollection<MessageObject> MessageObjects { get; set; }
     public MessageFailure? MessageFailure { get; set; }
 }

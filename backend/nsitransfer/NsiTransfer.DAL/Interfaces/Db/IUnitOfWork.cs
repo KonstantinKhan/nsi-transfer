@@ -7,8 +7,10 @@ public interface IUnitOfWork : IDisposable
     IGenericRepository<Sending> Sendings { get; }
     IGenericRepository<TargetReferenceNode> TargetReferenceNodes { get; }
     IGenericRepository<Message> Messages { get; }
+    IGenericRepository<MessageObject> MessageObjects { get; }
     IGenericRepository<PolynomObject> PolynomObjects { get; }
     IGenericRepository<PolynomObjectFailure> PolynomObjectFailures { get; }
+    IGenericRepository<ClassificationGroupCodeMax> ClassificationGroupCodeMaxes { get; }
     IGenericRepository<MessageFailure> MessageFailures { get; }
     IGenericRepository<MessagePublishingResult> PublishingResults { get; }
 

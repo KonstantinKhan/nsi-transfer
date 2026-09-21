@@ -11,8 +11,10 @@ public class UnitOfWork : IUnitOfWork
     private IGenericRepository<Sending>? _sendings;
     private IGenericRepository<TargetReferenceNode>? _targetReferenceNodes;
     private IGenericRepository<Message>? _messages;
+    private IGenericRepository<MessageObject>? _messageObjects;
     private IGenericRepository<PolynomObject>? _polynomObjects;
     private IGenericRepository<PolynomObjectFailure>? _polynomObjectFailures;
+    private IGenericRepository<ClassificationGroupCodeMax>? _classificationGroupCodeMaxes;
     private IGenericRepository<MessageFailure>? _messageFailures;
     private IGenericRepository<MessagePublishingResult>? _publishingResult;
 
@@ -33,9 +35,13 @@ public class UnitOfWork : IUnitOfWork
 
     public IGenericRepository<Message> Messages => _messages ??= new GenericRepository<Message>(_context);
 
+    public IGenericRepository<MessageObject> MessageObjects => _messageObjects ??= new GenericRepository<MessageObject>(_context);
+
     public IGenericRepository<PolynomObject> PolynomObjects => _polynomObjects ??= new GenericRepository<PolynomObject>(_context);
 
     public IGenericRepository<PolynomObjectFailure> PolynomObjectFailures => _polynomObjectFailures ??= new GenericRepository<PolynomObjectFailure>(_context);
+
+    public IGenericRepository<ClassificationGroupCodeMax> ClassificationGroupCodeMaxes => _classificationGroupCodeMaxes ??= new GenericRepository<ClassificationGroupCodeMax>(_context);
 
     public IGenericRepository<MessageFailure> MessageFailures => _messageFailures ??= new GenericRepository<MessageFailure>(_context);
 

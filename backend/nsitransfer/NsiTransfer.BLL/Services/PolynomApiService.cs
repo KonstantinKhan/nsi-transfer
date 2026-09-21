@@ -3,6 +3,7 @@ using Ascon.Polynom.Web.Api.Data.Interfaces.Enums;
 using Ascon.Polynom.Web.Api.Data.Interfaces.Models.Classification;
 using Ascon.Polynom.Web.Api.Data.Interfaces.Requests.Properties.Values;
 using Ascon.Polynom.Web.Api.Data.Models.Base;
+using Ascon.Polynom.Web.Api.Data.Models.Classification;
 using Ascon.Polynom.Web.Api.Data.Models.Properties.Values;
 using Ascon.Polynom.Web.Api.Data.Models.Search;
 using Ascon.Polynom.Web.Api.Data.Models.TreeView;
@@ -10,6 +11,7 @@ using Ascon.Polynom.Web.Api.Data.Requests.Base;
 using Ascon.Polynom.Web.Api.Data.Requests.Properties.Values;
 using Ascon.Polynom.Web.Api.Data.Requests.PropertyOwner;
 using Ascon.Polynom.Web.Api.Data.Responses;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql.Internal.Postgres;
 using NsiTransfer.BLL.Interfaces.Services;
@@ -28,15 +30,18 @@ public class PolynomApiService : IPolynomApiService
     private readonly IPolynomApiHttpRepository _apiRepository;
     private readonly IPolynomRequestBuilder _requestBuilder;
     private readonly IOptionsMonitor<PolynomApiSyncOptions> _apiOptions;
+    private readonly ILogger<PolynomApiService> _logger;
 
     public PolynomApiService(
         IPolynomApiHttpRepository apiRepository,
-        IPolynomRequestBuilder requestBuilder,
-        IOptionsMonitor<PolynomApiSyncOptions> apiOptions)
+        IPolynomRequestBuilder requestBuilder,  
+        IOptionsMonitor<PolynomApiSyncOptions> apiOptions,
+        ILogger<PolynomApiService> logger)
     {
         _apiRepository = apiRepository;
         _requestBuilder = requestBuilder;
         _apiOptions = apiOptions;
+        _logger = logger;
     }
 
     public Task<Result<PaginatedList<PropertySearchResultObject>>> GetDiffsInTimePeriod(
@@ -100,6 +105,27 @@ public class PolynomApiService : IPolynomApiService
         return _apiRepository.GetClassificationNodeChildren(childrenRequest, cancellationToken)
             .OnFailureAsync(err => err.AddError("Не удалось получить дочерние узлы классификации из API Полинома."))
             .MapAsync(responseModel => responseModel.Items);
+    }
+
+    public Task<Result<List<ElementGroup>>> GetSubGroups(int objectId, IdentifiableObjectType typeId, CancellationToken cancellationToken)
+    {
+        var request = new IdentifierRequest { ObjectId = objectId, TypeId = typeId };
+        return _apiRepository.GetGroupsInsideElementGroup(request, cancellationToken)
+            .OnFailureAsync(err => err.AddError($"Не удалось получить подгруппы группы objectId '{objectId}' typeId '{typeId}'."));
+    }
+
+    public Task<Result<List<ElementCatalog>>> GetCatalogsByReference(int objectId, IdentifiableObjectType typeId, CancellationToken cancellationToken)
+    {
+        var request = new IdentifierRequest { ObjectId = objectId, TypeId = typeId };
+        return _apiRepository.GetElementCatalogsByReference(request, cancellationToken)
+            .OnFailureAsync(err => err.AddError($"Не удалось получить каталоги справочника objectId '{objectId}' typeId '{typeId}'."));
+    }
+
+    public Task<Result<List<ElementGroup>>> GetGroupsByCatalog(int objectId, IdentifiableObjectType typeId, CancellationToken cancellationToken)
+    {
+        var request = new IdentifierRequest { ObjectId = objectId, TypeId = typeId };
+        return _apiRepository.GetElementGroupsByCatalog(request, cancellationToken)
+            .OnFailureAsync(err => err.AddError($"Не удалось получить группы каталога objectId '{objectId}' typeId '{typeId}'."));
     }
 
 
@@ -209,7 +235,55 @@ public class PolynomApiService : IPolynomApiService
         return Result<string?>.Success(result);
     }
 
-    public Task<Result<SetPropertyValuesResponse>> UpdateClassificationCodeAsync(
+    public async Task<Result<HashSet<string>>> GetAllClassificationCodesInGroup(int groupNodeObjectId, IdentifiableObjectType groupNodeTypeId, string minValue, string maxValue, CancellationToken cancellationToken)
+    {
+        var groupAccessObject = new AccessControlObject { ObjectId = groupNodeObjectId, TypeId = groupNodeTypeId };
+        var result = new HashSet<string>();
+        bool hasNextPage = false;
+        int pageNumber = 1;
+
+        do
+        {
+            var request = _requestBuilder.ClassificationChildrenNodesRequest(groupAccessObject, TreeFilterOptions.None, null,
+                ClassificationTreeOptions.ShowViewpoints |
+                ClassificationTreeOptions.ShowViewpointCatalog |
+                ClassificationTreeOptions.ShowDocuments |
+                ClassificationTreeOptions.ShowDocumentCatalog |
+                ClassificationTreeOptions.ShowElements,
+                pageNumber);
+
+            var childrenNodesResult = await _apiRepository.GetClassificationNodeChildren(request, cancellationToken)
+                .OnFailureAsync(err => err.AddError("Не удалось получить дочерние узлы группы из API Полинома."));
+            if (!childrenNodesResult.IsSuccess) return Result<HashSet<string>>.Failure(childrenNodesResult.ErrorMessage);
+
+            hasNextPage = childrenNodesResult.Data!.HasNextPage;
+
+            foreach (var child in childrenNodesResult.Data!.Items)
+            {
+                var props = await GetAllPropertiesOfObject(child.NodeObject.ObjectId, child.NodeObject.TypeId, cancellationToken);
+                if (!props.IsSuccess) return Result<HashSet<string>>.Failure(props.ErrorMessage);
+
+                var mappedProps = ModelMapper.CreateObjectWithShortProperties(child, props.Data!);
+                var classificationContract = mappedProps.Contracts.Find(c => c.Name.Equals(_apiOptions.CurrentValue.ConceptNameForClassificationData, StringComparison.OrdinalIgnoreCase));
+                var classificationCode = classificationContract?.Properties.Find(p => p.Name.Equals(_apiOptions.CurrentValue.ClassificationCodePropertyName, StringComparison.OrdinalIgnoreCase));
+                if (classificationCode?.Value == null) continue;
+
+                // Ошибочные данные — код вне допустимого диапазона группы, не учитываем при поиске свободных номеров.
+                if (NumericStringComparer.Instance.Compare(classificationCode.Value, minValue) < 0 ||
+                    NumericStringComparer.Instance.Compare(classificationCode.Value, maxValue) > 0)
+                    continue;
+
+                result.Add(classificationCode.Value);
+            }
+
+            pageNumber++;
+
+        } while (hasNextPage);
+
+        return Result<HashSet<string>>.Success(result);
+    }
+
+    public async Task<Result<SetPropertyValuesResponse>> UpdateClassificationCodeAsync(
         PolynomObjectWithShortProperties updatedModel,
         PolynomContractWithShortProperties editedContract,
         PolynomShortProperty editedPropertyInContract,
@@ -220,31 +294,108 @@ public class PolynomApiService : IPolynomApiService
             throw new InvalidOperationException($"Переданное свойство {nameof(editedPropertyInContract)} не является частью переданного понятия {nameof(editedContract)}.");
         }
 
-        var valueId = new IdentifiableObject { ObjectId = 1, TypeId = 0 };
-
-        var request = new SetPropertyValuesRequest
+        // Получаем id свойства-источника для данного понятия
+        var propertiesResult = await _apiRepository.GetConceptPropertiesByConceptId(editedContract.ObjectId, (int)editedContract.TypeId, cancellationToken);
+        if (!propertiesResult.IsSuccess)
         {
-            AddedOwnConcepts = [],
-            DeletedDynamicProperties = [],
-            DeletedOwnConcepts = [],
-            DeletedOwnProperties = [],
-            Owner = new IdentifiableObject { ObjectId = updatedModel.ObjectId, TypeId = updatedModel.TypeId },
-            Properties = 
-            [
-                new PropertyValueItem
-                {
-                    Contract = new IdentifiableObject { ObjectId = editedContract.ObjectId, TypeId = editedContract.TypeId },
-                    Definition = new IdentifiableObject { ObjectId = editedPropertyInContract.Definition.ObjectId, TypeId = editedPropertyInContract.Definition.TypeId },
-                    Value = valueId,
-                    EvaluationMode = (EvaluationMode)0
-                }
-            ],
-            Values = new AblePropertyValuesRequest { StringProperties = new Optional<List<IStringPropertyValueRequest>>(
-            [
-                new StringPropertyValueRequest { Value = editedPropertyInContract.Value, ObjectId = valueId.ObjectId, TypeId = valueId.TypeId }
-            ])}
-        };
+            _logger.LogError("Не удалось получить свойства концепции {Concept}: {Error}", editedContract.Name, propertiesResult.ErrorMessage);
+            return propertiesResult.ErrorMessage!;
+        }
 
-        return _apiRepository.SetPropertyValuesOfPropertyOwner(request, cancellationToken);
+        _logger.LogInformation("Получены свойства концепции {Concept}. Количество: {Count}", editedContract.Name, propertiesResult.Data?.Count ?? 0);
+        if (propertiesResult.Data != null)
+        {
+            foreach (var prop in propertiesResult.Data)
+            {
+                _logger.LogDebug("  Свойство: {Name} | ID: {ID} | IsReadOnly: {IsReadOnly} | IsReadOnlyEnabled: {IsReadOnlyEnabled}",
+                    prop.Name, prop.ObjectId, prop.IsReadOnly, prop.IsReadOnlyEnabled);
+            }
+        }
+
+        var propertySource = propertiesResult.Data?.FirstOrDefault(p =>
+            p.Name.Equals(editedPropertyInContract.Name, StringComparison.OrdinalIgnoreCase));
+
+        if (propertySource == null)
+        {
+            _logger.LogError("Не удалось найти свойство '{PropName}' в концепции '{Concept}'", editedPropertyInContract.Name, editedContract.Name);
+            return $"Не удалось найти свойство '{editedPropertyInContract.Name}' в концепции '{editedContract.Name}'";
+        }
+
+        var propertySourceId = propertySource.ObjectId;
+        var propertySourceTypeId = propertySource.TypeId;
+        var wasUnlocked = false;
+
+        _logger.LogInformation("Найденное свойство: {Name} | ID: {ID} | TypeId: {TypeId} | IsReadOnly: {IsReadOnly} | IsReadOnlyEnabled: {IsReadOnlyEnabled}",
+            propertySource.Name, propertySourceId, propertySourceTypeId, propertySource.IsReadOnly, propertySource.IsReadOnlyEnabled);
+
+        // Попытаемся разблокировать свойство, если оно заблокировано и флаг редактируемости включен
+        if (propertySource.IsReadOnly && propertySource.IsReadOnlyEnabled)
+        {
+            _logger.LogInformation("Разблокировка свойства {PropName} (ID: {ID}, TypeId: {TypeId})", propertySource.Name, propertySourceId, propertySourceTypeId);
+            var unlockResult = await _apiRepository.UpdateConceptPropertySource(propertySourceId, (int)propertySourceTypeId, false, cancellationToken);
+            if (unlockResult.IsSuccess)
+            {
+                wasUnlocked = true;
+                _logger.LogInformation("Свойство {PropName} успешно разблокировано", propertySource.Name);
+            }
+            else
+            {
+                _logger.LogError("Ошибка при разблокировке свойства {PropName}: {Error}", propertySource.Name, unlockResult.ErrorMessage);
+            }
+        }
+        else
+        {
+            _logger.LogInformation("Свойство не требует разблокировки. IsReadOnly: {IsReadOnly}, IsReadOnlyEnabled: {IsReadOnlyEnabled}",
+                propertySource.IsReadOnly, propertySource.IsReadOnlyEnabled);
+        }
+
+        try
+        {
+            var valueId = new IdentifiableObject { ObjectId = 1, TypeId = 0 };
+
+            var request = new SetPropertyValuesRequest
+            {
+                AddedOwnConcepts = [],
+                DeletedDynamicProperties = [],
+                DeletedOwnConcepts = [],
+                DeletedOwnProperties = [],
+                Owner = new IdentifiableObject { ObjectId = updatedModel.ObjectId, TypeId = updatedModel.TypeId },
+                Properties =
+                [
+                    new PropertyValueItem
+                    {
+                        Contract = new IdentifiableObject { ObjectId = editedContract.ObjectId, TypeId = editedContract.TypeId },
+                        Definition = new IdentifiableObject { ObjectId = editedPropertyInContract.Definition.ObjectId, TypeId = editedPropertyInContract.Definition.TypeId },
+                        Value = valueId,
+                        EvaluationMode = (EvaluationMode)0
+                    }
+                ],
+                Values = new AblePropertyValuesRequest { StringProperties = new Optional<List<IStringPropertyValueRequest>>(
+                [
+                    new StringPropertyValueRequest { Value = editedPropertyInContract.Value, ObjectId = valueId.ObjectId, TypeId = valueId.TypeId }
+                ])}
+            };
+
+            var updateResult = await _apiRepository.SetPropertyValuesOfPropertyOwner(request, cancellationToken);
+            _logger.LogInformation("Результат обновления свойства: {IsSuccess}", updateResult.IsSuccess);
+            return updateResult;
+        }
+        finally
+        {
+            // Вернём блокировку, если мы её снимали
+            if (wasUnlocked)
+            {
+                _logger.LogInformation("Возврат блокировки для свойства (ID: {ID}, TypeId: {TypeId})", propertySourceId, propertySourceTypeId);
+                var lockResult = await _apiRepository.UpdateConceptPropertySource(propertySourceId, (int)propertySourceTypeId, true, cancellationToken);
+                if (lockResult.IsSuccess)
+                {
+                    _logger.LogInformation("Свойство успешно заблокировано");
+                }
+                else
+                {
+                    _logger.LogError("Ошибка при блокировке свойства: {Error}", lockResult.ErrorMessage);
+                }
+            }
+        }
     }
 }

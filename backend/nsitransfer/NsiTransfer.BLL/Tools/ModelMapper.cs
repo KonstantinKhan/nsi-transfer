@@ -219,12 +219,10 @@ internal class ModelMapper
                 return FindProperty(props.Definitions.ColorProperties, p => p.ObjectId == propDef.ObjectId && p.TypeId == propDef.TypeId, "Definitions.ColorProperties", propDef, obj).Description;
 
             case PropertyType.DateTime:
-                var dateTimeValue = props.Values.DateTimeProperties.Value?.FirstOrDefault(p => p.ObjectId == propDef.ObjectId && p.TypeId == propDef.TypeId);
-                return dateTimeValue?.Value?.Value.ToString();
+                return FindProperty(props.Definitions.DateTimeProperties, p => p.ObjectId == propDef.ObjectId && p.TypeId == propDef.TypeId, "Definitions.DateTimeProperties", propDef, obj).Description;
 
             case PropertyType.Double:
-                var doubleValue = props.Values.DoubleProperties.Value?.FirstOrDefault(p => p.ObjectId == propDef.ObjectId && p.TypeId == propDef.TypeId);
-                return doubleValue?.Value?.Value.ToString();
+                return FindProperty(props.Definitions.DoubleProperties, p => p.ObjectId == propDef.ObjectId && p.TypeId == propDef.TypeId, "Definitions.DoubleProperties", propDef, obj).Description;
 
             case PropertyType.Enum:
                 return FindProperty(props.Definitions.EnumProperties, p => p.ObjectId == propDef.ObjectId && p.TypeId == propDef.TypeId, "Definitions.EnumProperties", propDef, obj).Description;

@@ -95,6 +95,17 @@ internal class PolynomApiHttpRepository : BaseHttpRepository, IPolynomApiHttpRep
             cancellationToken);
     }
 
+    public Task<Result<List<ConceptPropertySource>>> GetConceptPropertiesByConceptId(int conceptObjectId, int conceptTypeId, CancellationToken cancellationToken)
+    {
+        Logger.LogInformation("[API] → POST {Endpoint} | GetConceptPropertiesByConceptId (свойства концепции)", ApiRoutes.ConceptPropertySourceByConceptId);
+        var request = new { objectId = conceptObjectId, typeId = conceptTypeId };
+        return SendAndDeserializeAsync<List<ConceptPropertySource>>(
+            () => _apiHttpClient.PostAsync(ApiRoutes.ConceptPropertySourceByConceptId, request, cancellationToken),
+            ApiRoutes.ConceptPropertySourceByConceptId,
+            "GetConceptPropertiesByConceptId",
+            cancellationToken);
+    }
+
     public Task<Result<PropertyOwnerResponseCustom>> GetAllPropertiesOfPropertyOwner(IGetPropertiesRequest request, CancellationToken cancellationToken)
     {
         Logger.LogInformation("[API] → POST {Endpoint} | GetAllPropertiesOfPropertyOwner (свойства объекта)", ApiRoutes.GetPropertiesOfPropertyOwner);
@@ -125,6 +136,26 @@ internal class PolynomApiHttpRepository : BaseHttpRepository, IPolynomApiHttpRep
             cancellationToken);
     }
 
+    public Task<Result<List<ElementCatalog>>> GetElementCatalogsByReference(IIdentifierRequest request, CancellationToken cancellationToken)
+    {
+        Logger.LogInformation("[API] → POST {Endpoint} | GetElementCatalogsByReference (каталоги справочника)", ApiRoutes.GetElementCatalogsByReference);
+        return SendAndDeserializeAsync<List<ElementCatalog>>(
+            () => _apiHttpClient.PostAsync(ApiRoutes.GetElementCatalogsByReference, request, cancellationToken),
+            ApiRoutes.GetElementCatalogsByReference,
+            "GetElementCatalogsByReference",
+            cancellationToken);
+    }
+
+    public Task<Result<List<ElementGroup>>> GetElementGroupsByCatalog(IIdentifierRequest request, CancellationToken cancellationToken)
+    {
+        Logger.LogInformation("[API] → POST {Endpoint} | GetElementGroupsByCatalog (группы верхнего уровня каталога)", ApiRoutes.GetElementGroupsByCatalog);
+        return SendAndDeserializeAsync<List<ElementGroup>>(
+            () => _apiHttpClient.PostAsync(ApiRoutes.GetElementGroupsByCatalog, request, cancellationToken),
+            ApiRoutes.GetElementGroupsByCatalog,
+            "GetElementGroupsByCatalog",
+            cancellationToken);
+    }
+
     public Task<Result<SetPropertyValuesResponse>> SetPropertyValuesOfPropertyOwner(ISetPropertyValuesRequest request, CancellationToken cancellationToken)
     {
         Logger.LogInformation("[API] → POST {Endpoint} | SetPropertyValuesOfPropertyOwner (установить код классификатора)", ApiRoutes.SetPropertyValues);
@@ -135,6 +166,36 @@ internal class PolynomApiHttpRepository : BaseHttpRepository, IPolynomApiHttpRep
             cancellationToken);
     }
 
+    public async Task<Result<bool>> UpdateConceptPropertySource(int propertySourceId, int typeId, bool isReadOnly, CancellationToken cancellationToken)
+    {
+        Logger.LogInformation("[API] → POST {Endpoint} | UpdateConceptPropertySource (переключить флаг \"Запретить изменение\")", ApiRoutes.ConceptPropertySourceUpdate);
+
+        var request = new
+        {
+            conceptPropertySource = new { objectId = propertySourceId, typeId = typeId },
+            isReadOnly = isReadOnly
+        };
+
+        var httpResult = await SendRequestAsync(
+            () => _apiHttpClient.PostAsync(ApiRoutes.ConceptPropertySourceUpdate, request, cancellationToken),
+            cancellationToken);
+
+        if (!httpResult.IsSuccess)
+        {
+            Logger.LogError("[API] ✗ UpdateConceptPropertySource | {Endpoint} | Ошибка отправки: {Error}", ApiRoutes.ConceptPropertySourceUpdate, httpResult.ErrorMessage);
+            return httpResult.ErrorMessage!;
+        }
+
+        var response = httpResult.Data!;
+        if (!response.IsSuccessStatusCode)
+        {
+            Logger.LogError("[API] ✗ UpdateConceptPropertySource | {Endpoint} | Статус: {Status} | Ответ: {Content}", ApiRoutes.ConceptPropertySourceUpdate, response.StatusCode, await response.Content.ReadAsStringAsync());
+            return $"Ошибка API на endpoint {ApiRoutes.ConceptPropertySourceUpdate}. Статус: {response.StatusCode}.";
+        }
+
+        Logger.LogInformation("[API] ✓ UpdateConceptPropertySource | {Endpoint} | Статус: 200 OK", ApiRoutes.ConceptPropertySourceUpdate);
+        return Result<bool>.Success(true);
+    }
 
     /// <summary>
     /// Универсальный метод для отправки POST-запроса и десериализации ответа.

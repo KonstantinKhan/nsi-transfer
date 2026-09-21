@@ -44,5 +44,19 @@ public interface IPolynomApiHttpRepository
     /// </summary>
     Task<Result<List<ElementGroup>>> GetGroupsInsideElementGroup(IIdentifierRequest request, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Получает каталоги элементов справочника (Reference → Catalog, верхний уровень иерархии классификации).
+    /// </summary>
+    Task<Result<List<ElementCatalog>>> GetElementCatalogsByReference(IIdentifierRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Получает группы верхнего уровня внутри каталога элементов (Catalog → Group).
+    /// </summary>
+    Task<Result<List<ElementGroup>>> GetElementGroupsByCatalog(IIdentifierRequest request, CancellationToken cancellationToken);
+
     Task<Result<SetPropertyValuesResponse>> SetPropertyValuesOfPropertyOwner(ISetPropertyValuesRequest request, CancellationToken cancellationToken);
+
+    Task<Result<List<ConceptPropertySource>>> GetConceptPropertiesByConceptId(int conceptObjectId, int conceptTypeId, CancellationToken cancellationToken);
+
+    Task<Result<bool>> UpdateConceptPropertySource(int propertySourceId, int typeId, bool isReadOnly, CancellationToken cancellationToken);
 }

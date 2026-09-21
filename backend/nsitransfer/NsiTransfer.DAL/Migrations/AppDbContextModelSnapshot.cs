@@ -37,6 +37,35 @@ namespace NsiTransfer.DAL.Migrations
                     b.ToTable("EmailMessagesToEmailRecipients");
                 });
 
+            modelBuilder.Entity("NsiTransfer.DAL.Db.Entities.ClassificationGroupCodeMax", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("GroupObjectId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("GroupTypeId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastMaxCode")
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasPrecision(3)
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GroupObjectId", "GroupTypeId")
+                        .IsUnique();
+
+                    b.ToTable("ClassificationGroupCodeMaxes");
+                });
+
             modelBuilder.Entity("NsiTransfer.DAL.Db.Entities.EmailFailure", b =>
                 {
                     b.Property<long>("Id")
@@ -174,6 +203,42 @@ namespace NsiTransfer.DAL.Migrations
                         .IsUnique();
 
                     b.ToTable("MessageFailures");
+                });
+
+            modelBuilder.Entity("NsiTransfer.DAL.Db.Entities.MessageObject", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("MessageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<int>("PolynomObjectId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PolynomTypeId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SerializedObject")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MessageId");
+
+                    b.HasIndex("Name");
+
+                    b.HasIndex("PolynomObjectId", "PolynomTypeId");
+
+                    b.ToTable("MessageObjects");
                 });
 
             modelBuilder.Entity("NsiTransfer.DAL.Db.Entities.MessagePublishingResult", b =>
@@ -494,6 +559,17 @@ namespace NsiTransfer.DAL.Migrations
                     b.Navigation("Message");
                 });
 
+            modelBuilder.Entity("NsiTransfer.DAL.Db.Entities.MessageObject", b =>
+                {
+                    b.HasOne("NsiTransfer.DAL.Db.Entities.Message", "Message")
+                        .WithMany("MessageObjects")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Message");
+                });
+
             modelBuilder.Entity("NsiTransfer.DAL.Db.Entities.PolynomObject", b =>
                 {
                     b.HasOne("NsiTransfer.DAL.Db.Entities.Message", "Message")
@@ -535,6 +611,8 @@ namespace NsiTransfer.DAL.Migrations
             modelBuilder.Entity("NsiTransfer.DAL.Db.Entities.Message", b =>
                 {
                     b.Navigation("MessageFailure");
+
+                    b.Navigation("MessageObjects");
 
                     b.Navigation("PolynomObjects");
                 });

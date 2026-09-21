@@ -16,8 +16,9 @@ namespace NsiTransfer
     {
         public static void Main(string[] args)
         {
-            var builder = WebApplication.CreateBuilder(args);
+            EnvironmentLoader.Load();
 
+            var builder = WebApplication.CreateBuilder(args);
             builder.AddLoggingWithSerilog();
             builder.BindConfigModels();
 

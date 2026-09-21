@@ -19,9 +19,13 @@ public class AppDbContext : DbContext
 
     public DbSet<Message> Messages { get; set; }
 
+    public DbSet<MessageObject> MessageObjects { get; set; }
+
     public DbSet<PolynomObject> PolynomObjects { get; set; }
 
     public DbSet<PolynomObjectFailure> PolynomObjectFailures { get; set; }
+
+    public DbSet<ClassificationGroupCodeMax> ClassificationGroupCodeMaxes { get; set; }
 
     public DbSet<MessageFailure> MessageFailures { get; set; }
     
@@ -36,7 +40,6 @@ public class AppDbContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.LogTo(Console.WriteLine, LogLevel.Information);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -88,7 +91,24 @@ public class AppDbContext : DbContext
                 .IsRequired(false);
 
             entity.HasMany(e => e.PolynomObjects).WithOne(o => o.Message).HasForeignKey(o => o.MessageId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.MessageObjects).WithOne(o => o.Message).HasForeignKey(o => o.MessageId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.MessageFailure).WithOne(e => e.Message).HasForeignKey<MessageFailure>(e => e.MessageId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MessageObject>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Name).HasColumnType("varchar(256)");
+            entity.Property(e => e.SerializedObject)
+                .HasColumnType("jsonb")
+                .HasConversion(
+                    v => string.IsNullOrEmpty(v) ? "{}" : v,
+                    v => v ?? "{}");
+
+            entity.HasIndex(e => e.MessageId).IsUnique(false);
+            entity.HasIndex(e => new { e.PolynomObjectId, e.PolynomTypeId }).IsUnique(false);
+            entity.HasIndex(e => e.Name).IsUnique(false);
         });
 
         modelBuilder.Entity<PolynomObject>(entity =>
@@ -111,6 +131,16 @@ public class AppDbContext : DbContext
             entity.Property(e => e.ObjectName).HasColumnType("varchar(256)");
 
             entity.HasOne(e => e.Message).WithMany().HasForeignKey(e => e.MessageId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ClassificationGroupCodeMax>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.LastMaxCode).HasColumnType("varchar(64)").IsRequired(false);
+            entity.Property(e => e.UpdatedAt).HasColumnType("timestamp with time zone").HasPrecision(3);
+
+            entity.HasIndex(e => new { e.GroupObjectId, e.GroupTypeId }).IsUnique();
         });
 
         modelBuilder.Entity<MessageFailure>(entity =>

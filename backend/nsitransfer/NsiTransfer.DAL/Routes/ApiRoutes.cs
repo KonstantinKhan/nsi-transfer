@@ -111,11 +111,13 @@ public static class ApiRoutes
 
     public static string Concept => Path("/concept/get-all");
 
-    public static string ConceptPropertySource => Path("/concept-property-source/get-by-concept");
+    public static string ConceptPropertySourceByConceptId => Path("/concept-property-source/get-by-concept");
 
     public static string ConceptPropertySourceById => Path("/concept-property-source/get-by-id");
 
     public static string ConceptPropertySourceByAbsoluteCode => Path("/concept-property-source/get-by-absolute-code");
+
+    public static string ConceptPropertySourceUpdate => Path("/concept-property-source/update");
 
     public static string GetClassification => Path("/tree/get-classification");
 
@@ -129,4 +131,14 @@ public static class ApiRoutes
     /// Конечная точка получения групп, находящихся внутри указанной группы элементов.
     /// </summary>
     public static string GetGroupsInsideElementGroup => Path("/element-group/get-by-group");
+
+    /// <summary>
+    /// Конечная точка получения каталогов элементов справочника (Reference → Catalog).
+    /// </summary>
+    public static string GetElementCatalogsByReference => Path("/element-catalog/get-by-reference");
+
+    /// <summary>
+    /// Конечная точка получения групп верхнего уровня внутри каталога элементов (Catalog → Group).
+    /// </summary>
+    public static string GetElementGroupsByCatalog => Path("/element-group/get-by-catalog");
 }
