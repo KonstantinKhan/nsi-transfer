@@ -19,6 +19,9 @@
 - [[cyrillic-encoding-fix]] — Фикс кодировки кириллических символов в RabbitMQ сообщениях
 - [[double-datetime-description-fix]] — Фикс: Description для Double и DateTime свойств в JSON (2026-09-21)
 
+### Управление репо
+- [[history-cleanup]] — Очистка кредов из истории, переписание коммитов (2026-09-21)
+
 ### Классификация объектов
 - [[classification]] — Система классификации объектов
 - [[classification-code-processor]] — Обработчик кодов классификатора
@@ -35,7 +38,9 @@
 
 ---
 
-**Последнее обновление:** 2026-09-21 — исправлена передача Description для свойств Double и DateTime в JSON. Проблема: SeparatePureDescription возвращала Value вместо Description. Решение: изменена логика поиска в Definitions. [[double-datetime-description-fix]]
+**Последнее обновление:** 2026-09-21 — история репо переписана, креды удалены. 18 коммитов объединены в один, ненужные ветки удалены. На других машинах выполнить обновление через `git fetch`, `git reset --hard origin/main`. [[history-cleanup]]
+
+**Предыдущее обновление:** 2026-09-21 — исправлена передача Description для свойств Double и DateTime в JSON. Проблема: SeparatePureDescription возвращала Value вместо Description. Решение: изменена логика поиска в Definitions. [[double-datetime-description-fix]]
 
 **Предыдущее обновление:** 2026-09-15 — добавлена пошаговая инструкция сборки офлайн-дистрибутива на Windows (`dist/`): проверка Docker Desktop, сборка `--no-cache`, проверка даты образа перед save, сохранение в `tar.gz`, упаковка zip. Причина: dist-архив собирался без внесённых изменений из-за сборки в папке `dist/` (там `image:`, не `build:`) и без `--no-cache`. [[offline-build]]
 
