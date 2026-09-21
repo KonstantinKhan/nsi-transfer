@@ -64,6 +64,22 @@
         </button>
         <StatusMessage ref="syncStatusRef" />
       </div>
+
+      <div class="config-card" style="margin-top: 20px;">
+        <h3 class="card-title">Переиндексация кодов классификатора</h3>
+        <p class="card-description">Переиндексирует кеш последних кодов классификатора, обойдя все группы справочника через Polynom API</p>
+        <button
+          class="rebuild-cache-btn"
+          :disabled="isRebuildingCache"
+          @click="handleRebuildGroupCodeCache"
+        >
+          <svg v-if="isRebuildingCache" class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+          {{ isRebuildingCache ? 'Запуск...' : 'Переиндексировать коды классификатора' }}
+        </button>
+        <StatusMessage ref="rebuildStatusRef" />
+      </div>
     </template>
   </div>
 </template>
@@ -80,10 +96,12 @@ import {
   type PolynomConfig,
   type PolynomApiSyncOptions
 } from '@/services/configurationService';
+import { rebuildGroupCodeCache } from '@/services/polynomSyncService';
 
 const isLoading = ref(true);
 const isSavingConfig = ref(false);
 const isSavingSync = ref(false);
+const isRebuildingCache = ref(false);
 
 const config = ref<PolynomConfig>({
   address: '',
@@ -102,6 +120,7 @@ const syncOptions = ref<PolynomApiSyncOptions>({
 
 const configStatusRef = ref<InstanceType<typeof StatusMessage> | null>(null);
 const syncStatusRef = ref<InstanceType<typeof StatusMessage> | null>(null);
+const rebuildStatusRef = ref<InstanceType<typeof StatusMessage> | null>(null);
 
 // Валидация: все строки не пустые
 const isConfigValid = computed(() => {
@@ -174,6 +193,26 @@ const saveSyncOptions = async () => {
     isSavingSync.value = false;
   }
 };
+
+const handleRebuildGroupCodeCache = async () => {
+  if (!confirm('Переиндексация обойдёт все группы справочника через Polynom API и может занимать продолжительное время. Запустить?')) {
+    return;
+  }
+
+  isRebuildingCache.value = true;
+  try {
+    const result = await rebuildGroupCodeCache();
+    rebuildStatusRef.value?.show(result.message, 'success');
+  } catch (error) {
+    console.error('Ошибка запуска переиндексации:', error);
+    rebuildStatusRef.value?.show(
+      error instanceof Error ? error.message : 'Не удалось запустить переиндексацию кеша кодов классификатора',
+      'error'
+    );
+  } finally {
+    isRebuildingCache.value = false;
+  }
+};
 </script>
 
 <style scoped>
@@ -241,5 +280,51 @@ const saveSyncOptions = async () => {
 .save-btn:disabled {
   background-color: #d1a1aa;
   cursor: not-allowed;
+}
+.card-description {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  color: #666;
+}
+.rebuild-cache-btn {
+  background-color: #3498db;
+  color: #fff;
+  border: none;
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+  transition: transform 0.1s, box-shadow 0.2s, background-color 0.2s;
+  width: 100%;
+  justify-content: center;
+}
+.rebuild-cache-btn:hover:not(:disabled) {
+  background-color: #2980b9;
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+}
+.rebuild-cache-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.rebuild-cache-btn:disabled {
+  background-color: #a9cce3;
+  cursor: not-allowed;
+}
+.spinner {
+  width: 18px;
+  height: 18px;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>
