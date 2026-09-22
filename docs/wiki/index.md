@@ -11,6 +11,7 @@
 - [[timezone-sync]] — Синхронизация и часовые пояса (PolynomConfig__TimeZoneId, отладка)
 - [[scheduled-sync-disabled-fix]] — Фикс: BackgroundService для периодического sync был отключен (2026-08-26)
 - [[offline-build]] — Пошаговая инструкция сборки офлайн-дистрибутива (Windows, dist/) после обновления кода
+- [[docker-build-linux-amd64]] — Сборка Docker образов под linux/amd64 на Linux машине для offline сервера
 
 ### API и интеграция
 - [[polynom-api]] — Полином API: эндпоинты, запросы и ответы
