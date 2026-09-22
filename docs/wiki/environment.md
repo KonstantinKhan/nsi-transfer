@@ -77,7 +77,14 @@ Host=localhost;Port=5432;Database=nsi_transfer;Username=postgres;Password=rJpthU
 **Примеры:**
 - Локально на одной машине: `http://localhost:8080/api`
 - Удалённо: `http://192.168.0.50:8080/api`
-- В Docker: встраивается в бандл при сборке
+
+**В Docker:** читается в рантайме, не запекается в бандл при сборке. `docker-entrypoint.sh`
+генерирует `/config.json` из `VITE_API_BASE_URL` при старте контейнера, фронт фетчит его
+перед загрузкой приложения (`index.html` → `window.__APP_CONFIG__` → `apiConfig.ts`).
+Смена значения требует только пересоздания контейнера, без пересборки образа:
+```bash
+docker compose up -d --force-recreate nsitransferfront
+```
 
 ## Логирование
 
