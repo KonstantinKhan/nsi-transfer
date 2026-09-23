@@ -26,7 +26,7 @@ git checkout docker-build-linux
 ## Шаг 2: Собрать образы
 
 ```bash
-docker-compose build
+docker compose build
 ```
 
 **Ожидать:**
@@ -42,60 +42,36 @@ docker images | grep nsitransfer
 - `nsitransfer-nsitransfer:latest` (~104MB)
 - `nsitransfer-nsitransferfront:latest` (~27MB)
 
-## Шаг 3: Экспортировать в tar
+## Шаг 3: Экспортировать в архив
+
+`docker save` умеет сохранить сразу несколько образов в один tar, а `docker load` сам
+распознаёт gzip — отдельный скрипт загрузки не нужен:
 
 ```bash
-# Создать директорию для архива
-mkdir -p docker-images
-cd docker-images
-
-# Сохранить образы
-docker save nsitransfer-nsitransfer:latest > backend.tar
-docker save nsitransfer-nsitransferfront:latest > frontend.tar
-
-# Создать скрипт загрузки
-cat > load.sh << 'EOF'
-#!/bin/bash
-echo "Загрузка Docker образов..."
-docker load -i backend.tar
-docker load -i frontend.tar
-echo "✓ Образы загружены успешно"
-echo ""
-docker images | grep nsitransfer
-EOF
-chmod +x load.sh
-
-# Упаковать архив
-cd ..
-tar -czf nsitransfer-docker-linux-amd64.tar.gz docker-images/
+docker save nsitransfer-nsitransfer:latest nsitransfer-nsitransferfront:latest | gzip > nsitransfer-images-amd64.tar.gz
 ```
 
 **Результат:**
-- `nsitransfer-docker-linux-amd64.tar.gz` (~130MB)
+- `nsitransfer-images-amd64.tar.gz` (~130MB)
 
 ## Шаг 4: Передать на сервер
 
 ```bash
-# На твоей машине (macOS):
-scp nsitransfer-docker-linux-amd64.tar.gz user@server:/home/user/
+# На твоей машине (macOS/Linux):
+scp nsitransfer-images-amd64.tar.gz user@server:/home/user/
 ```
 
 ## На сервере (без интернета)
 
 ```bash
-# Распаковать архив
-tar -xzf nsitransfer-docker-linux-amd64.tar.gz
-cd docker-images
-
-# Загрузить образы
-./load.sh
+# Загрузить оба образа одной командой
+docker load -i nsitransfer-images-amd64.tar.gz
 
 # Проверить
 docker images | grep nsitransfer
 
 # Запустить сервисы
-cd ../
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Вариант 2: сборка через buildx (Mac, Windows, любой хост)
@@ -137,7 +113,7 @@ docker image inspect nsitransfer-nsitransferfront:latest | grep -i architecture
 # Обе — "Architecture": "amd64"
 ```
 
-Дальше — Шаг 3 и Шаг 4 из Варианта 1 (экспорт в tar, передача на сервер) без изменений.
+Дальше — Шаг 3 и Шаг 4 из Варианта 1 (экспорт в архив, передача на сервер) без изменений.
 
 ## Troubleshooting
 
@@ -188,6 +164,6 @@ docker buildx ls   # builder "colima" должен быть running
 
 ## Ссылки
 
+- [[deployment]] — развёртывание через Docker Compose, структура docker-compose.yml
 - [[offline-build]] — сборка offline-дистрибутива на Windows
 - [[configuration]] — конфигурация приложения
-- [[docker-compose.yml]] — конфигурация контейнеров
