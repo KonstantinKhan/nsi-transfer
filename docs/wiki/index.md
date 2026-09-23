@@ -10,6 +10,7 @@
 - [[environment]] — Переменные окружения и их назначение
 - [[timezone-sync]] — Синхронизация и часовые пояса (PolynomConfig__TimeZoneId, отладка)
 - [[scheduled-sync-disabled-fix]] — Фикс: BackgroundService для периодического sync был отключен (2026-08-26)
+- [[deployment]] — Развёртывание через Docker Compose: установка, Windows Firewall, диагностика, чек-лист передачи
 - [[offline-build]] — Пошаговая инструкция сборки офлайн-дистрибутива (Windows, dist/) после обновления кода
 - [[docker-build-linux-amd64]] — Сборка Docker образов под linux/amd64 на Linux машине для offline сервера
 
@@ -39,7 +40,9 @@
 
 ---
 
-**Последнее обновление:** 2026-09-21 — история репо переписана, креды удалены. 18 коммитов объединены в один, ненужные ветки удалены. На других машинах выполнить обновление через `git fetch`, `git reset --hard origin/main`. [[history-cleanup]]
+**Последнее обновление:** 2026-09-23 — консолидированы `DEPLOY.md`/`HANDOFF.md`/`DOCKER-README.md` (корень репо) в [[deployment]], устаревшее описание build-time запекания `VITE_API_BASE_URL` убрано (актуально — рантайм-конфиг, см. [[environment]]). В корне остались только `AGENTS.md`/`CLAUDE.md`.
+
+**Предыдущее обновление:** 2026-09-21 — история репо переписана, креды удалены. 18 коммитов объединены в один, ненужные ветки удалены. На других машинах выполнить обновление через `git fetch`, `git reset --hard origin/main`. [[history-cleanup]]
 
 **Предыдущее обновление:** 2026-09-21 — исправлена передача Description для свойств Double и DateTime в JSON. Проблема: SeparatePureDescription возвращала Value вместо Description. Решение: изменена логика поиска в Definitions. [[double-datetime-description-fix]]
 
