@@ -10,7 +10,9 @@
 - [[environment]] — Переменные окружения и их назначение
 - [[timezone-sync]] — Синхронизация и часовые пояса (PolynomConfig__TimeZoneId, отладка)
 - [[scheduled-sync-disabled-fix]] — Фикс: BackgroundService для периодического sync был отключен (2026-08-26)
+- [[deployment]] — Развёртывание через Docker Compose: установка, Windows Firewall, диагностика, чек-лист передачи
 - [[offline-build]] — Пошаговая инструкция сборки офлайн-дистрибутива (Windows, dist/) после обновления кода
+- [[docker-build-linux-amd64]] — Сборка Docker образов под linux/amd64 на Linux машине для offline сервера
 
 ### API и интеграция
 - [[polynom-api]] — Полином API: эндпоинты, запросы и ответы
@@ -38,7 +40,11 @@
 
 ---
 
-**Последнее обновление:** 2026-09-21 — история репо переписана, креды удалены. 18 коммитов объединены в один, ненужные ветки удалены. На других машинах выполнить обновление через `git fetch`, `git reset --hard origin/main`. [[history-cleanup]]
+**Последнее обновление:** 2026-09-23 (2) — [[docker-build-linux-amd64]] проверена end-to-end: cross-build через buildx на Mac/colima → перенос архива → запуск на реальном Linux-сервере отработал полностью. Заодно поправлены устаревшие команды (`docker-compose` → `docker compose`) и упрощена схема архива (один `docker save | gzip`, без `load.sh`).
+
+**Предыдущее обновление:** 2026-09-23 — консолидированы `DEPLOY.md`/`HANDOFF.md`/`DOCKER-README.md` (корень репо) в [[deployment]], устаревшее описание build-time запекания `VITE_API_BASE_URL` убрано (актуально — рантайм-конфиг, см. [[environment]]). В корне остались только `AGENTS.md`/`CLAUDE.md`.
+
+**Предыдущее обновление:** 2026-09-21 — история репо переписана, креды удалены. 18 коммитов объединены в один, ненужные ветки удалены. На других машинах выполнить обновление через `git fetch`, `git reset --hard origin/main`. [[history-cleanup]]
 
 **Предыдущее обновление:** 2026-09-21 — исправлена передача Description для свойств Double и DateTime в JSON. Проблема: SeparatePureDescription возвращала Value вместо Description. Решение: изменена логика поиска в Definitions. [[double-datetime-description-fix]]
 

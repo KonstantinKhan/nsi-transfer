@@ -1,5 +1,16 @@
+let baseUrl = 'http://localhost:8080/api'
+
+try {
+  const config = (window as any).__APP_CONFIG__
+  if (config?.API_BASE_URL) {
+    baseUrl = config.API_BASE_URL
+  }
+} catch {
+  // fallback to default
+}
+
 export const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
+  BASE_URL: baseUrl,
   ENDPOINTS: {
     START_SYNC: '/polynom-sync/start-data-collection-in-background',
     REBUILD_GROUP_CODE_CACHE: '/polynom-sync/rebuild-group-code-cache',
