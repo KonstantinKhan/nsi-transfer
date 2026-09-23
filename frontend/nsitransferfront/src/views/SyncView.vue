@@ -10,6 +10,10 @@
 
       <StatusMessage ref="statusRef" />
 
+      <div v-if="sseUnauthorized" class="loading-text">
+        SSE-соединение не авторизовано. Обновите страницу для повторного входа.
+      </div>
+
       <div v-if="isLoadingList" class="loading-text">Загрузка истории синхронизаций...</div>
 
       <div v-else class="statistics-list">
@@ -44,6 +48,8 @@ import {
   startSync,
   listenForAllSyncEvents,
 } from '@/services/polynomSyncService';
+import { isAccessTokenAlive } from '@/services/authStorage';
+import { refreshToken } from '@/services/authService';
 import type {
   SendingModel,
   MessageModel,
@@ -125,7 +131,8 @@ const statistics = computed<UIDSending[]>(() =>
 
 // Раньше — карта EventSource на каждый sendingId.
 // Теперь одно соединение обслуживает события сразу для всех отправлений.
-const allEventsSource = ref<EventSource | null>(null);
+const allEventsSource = ref<{ close: () => void; isUnauthorized: () => boolean } | null>(null);
+const sseUnauthorized = ref(false);
 
 // Сентинел-элемент для infinite scroll и его наблюдатель.
 const sentinelEl = ref<HTMLElement | null>(null);
@@ -324,8 +331,17 @@ const handleRetryMessageEmpty = (sendingId: string, payload: RetryMessageEmptyPa
   
 };
 
-const subscribeToAllSyncEvents = () => {
+const subscribeToAllSyncEvents = async () => {
   if (allEventsSource.value) return;
+
+  if (!isAccessTokenAlive()) {
+    const renewed = await refreshToken();
+    if (!renewed) {
+      sseUnauthorized.value = true;
+      console.error('[Init] Access-токен истёк, refresh не удался — SSE-подписка не открыта');
+      return;
+    }
+  }
 
   const handlers: AllSyncEventHandlers = {
     onStatusChanged: handleStatusChanged,
@@ -336,7 +352,12 @@ const subscribeToAllSyncEvents = () => {
     onMessageFailed: handleMessageFailed,
     onSendingCompleted: handleSendingCompleted,
     onError: handleSyncError,
-    onConnectionError: (e) => console.error('Ошибка общего SSE-соединения:', e),
+    onConnectionError: (e) => {
+      console.error('Ошибка общего SSE-соединения:', e);
+      if (allEventsSource.value?.isUnauthorized()) {
+        sseUnauthorized.value = true;
+      }
+    },
     // <-- НОВЫЕ обработчики
     onRetryMessageCreated: handleRetryMessageCreated,
     onRetryObjectsCollected: handleRetryObjectsCollected,
@@ -459,8 +480,8 @@ watch(sentinelEl, (newEl, oldEl) => {
 
 onMounted(() => {
   // Подписываемся до загрузки списка — чтобы не потерять события,
-  // которые могут прийти, пока список ещё грузится.
-  subscribeToAllSyncEvents();
+  // которые могут прийти, пока список ещё грузится. Подписка не блокирует загрузку списка.
+  void subscribeToAllSyncEvents();
   fetchInitialSendings();
 });
 

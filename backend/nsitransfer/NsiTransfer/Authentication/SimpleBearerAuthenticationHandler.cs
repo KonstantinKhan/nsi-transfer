@@ -14,6 +14,7 @@ namespace NsiTransfer.Authentication;
 /// Приоритет источников:
 /// 1. Cookie "auth_access_token" (основной способ для веб-клиента)
 /// 2. Заголовок Authorization: Bearer (для обратной совместимости)
+/// 3. Query-параметр access_token (только GET на SSE-эндпоинты /api/polynom-sync/listen-*)
 /// </summary>
 public class SimpleBearerAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
@@ -36,6 +37,13 @@ public class SimpleBearerAuthenticationHandler : AuthenticationHandler<Authentic
                 token = ExtractTokenFromHeader();
             }
 
+            if (string.IsNullOrWhiteSpace(token) && HttpMethods.IsGet(Request.Method) &&
+                (Request.Path.StartsWithSegments("/api/polynom-sync/listen-for-all-sync-events") ||
+                 Request.Path.StartsWithSegments("/api/polynom-sync/listen-for-sync-events")))
+            {
+                token = Request.Query["access_token"].ToString();
+            }
+
             // 3. Если токен так и не нашли — нет результата (не ошибка, а факт отсутствия)
             if (string.IsNullOrWhiteSpace(token))
             {
@@ -47,7 +55,7 @@ public class SimpleBearerAuthenticationHandler : AuthenticationHandler<Authentic
             {
                 new Claim(AuthConstants.AccessToken, token),
                 // Добавляем claim с источником токена — полезно для логирования/отладки
-                new Claim("token_source", Request.Cookies.ContainsKey(AuthConstants.AccessTokenCookieName) ? "cookie" : "header")
+                new Claim("token_source", Request.Cookies.ContainsKey(AuthConstants.AccessTokenCookieName) ? "cookie" : (Request.Query.ContainsKey("access_token") ? "query" : "header"))
             };
 
             var identity = new ClaimsIdentity(claims, AuthConstants.AuthenticationSchemeName);
@@ -72,7 +80,8 @@ public class SimpleBearerAuthenticationHandler : AuthenticationHandler<Authentic
         {
             error = "Unauthorized",
             message = "Требуется аутентификация. Access token должен быть передан " +
-                      "через cookie 'auth_access_token' или заголовок 'Authorization: Bearer <token>'"
+                      "через cookie 'auth_access_token' или заголовок 'Authorization: Bearer <token>' " +
+                      "(query-параметр access_token принимается только на GET SSE-эндпоинтах /api/polynom-sync/listen-*)"
         });
     }
 

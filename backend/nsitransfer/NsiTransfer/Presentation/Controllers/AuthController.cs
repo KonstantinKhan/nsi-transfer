@@ -185,7 +185,7 @@ public class AuthController : ControllerBase
         var baseOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true, // Только HTTPS
+            Secure = Request.IsHttps,
             SameSite = SameSiteMode.Lax, // Баланс между безопасностью и функциональностью
             Path = "/"
         };
@@ -194,7 +194,7 @@ public class AuthController : ControllerBase
         var accessTokenOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
+            Secure = Request.IsHttps,
             SameSite = SameSiteMode.Lax,
             Path = "/",
             Expires = DateTimeOffset.UtcNow.AddSeconds(authResponse.ExpiresIn)
@@ -205,7 +205,7 @@ public class AuthController : ControllerBase
         var refreshTokenOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
+            Secure = Request.IsHttps,
             SameSite = SameSiteMode.Lax,
             Path = "/",
             Expires = DateTimeOffset.UtcNow.AddDays(30) // Refresh живёт 30 дней
@@ -217,7 +217,7 @@ public class AuthController : ControllerBase
         var expiresAtOptions = new CookieOptions
         {
             HttpOnly = false, // Можно читать из JavaScript
-            Secure = true,
+            Secure = Request.IsHttps,
             SameSite = SameSiteMode.Lax,
             Path = "/",
             Expires = DateTimeOffset.UtcNow.AddSeconds(authResponse.ExpiresIn)
@@ -235,7 +235,7 @@ public class AuthController : ControllerBase
         var expiredOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
+            Secure = Request.IsHttps,
             SameSite = SameSiteMode.Lax,
             Path = "/",
             Expires = DateTimeOffset.UtcNow.AddDays(-1)
@@ -247,7 +247,7 @@ public class AuthController : ControllerBase
         var expiredPublicOptions = new CookieOptions
         {
             HttpOnly = false,
-            Secure = true,
+            Secure = Request.IsHttps,
             SameSite = SameSiteMode.Lax,
             Path = "/",
             Expires = DateTimeOffset.UtcNow.AddDays(-1)

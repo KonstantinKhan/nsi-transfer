@@ -15,6 +15,7 @@ import {
   type RetryMessagePublishedPayload, type RetryMessageEmptyPayload,
   type GetSendingsParams } from '@/types/sync.types';
 import { apiFetch } from './httpClient';
+import { refreshToken } from './authService';
 import { getCurrentUserNameOrLogin } from './authStorage';
 import { handleApiError } from '@/services/apiErrorHandling';
 
@@ -82,9 +83,13 @@ export const rebuildGroupCodeCache = async (): Promise<{ message: string }> => {
 
 export const listenForAllSyncEvents = (
   handlers: AllSyncEventHandlers
-): EventSource => {
+): { close: () => void; isUnauthorized: () => boolean } => {
   const url = `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.LISTEN_ALL_SYNC_EVENTS}`;
-  const eventSource = new EventSource(url, { withCredentials: true });
+  let eventSource: EventSource | null = null;
+  let everConnected = false;
+  let recoveryAttempted = false;
+  let unauthorized = false;
+  let closedByUser = false;
 
   const parseEnvelope = <T>(data: string): SendingSyncEventEnvelope<T> | null => {
     try {
@@ -95,69 +100,117 @@ export const listenForAllSyncEvents = (
     }
   };
 
-  // --- Подписка на реальные события сервера ---
-  eventSource.addEventListener('StatusChanged', (e) => {
-    const envelope = parseEnvelope<StatusChangedPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onStatusChanged?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('MessageCreated', (e) => {
-    const envelope = parseEnvelope<MessageCreatedPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onMessageCreated?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('ObjectsCollected', (e) => {
-    const envelope = parseEnvelope<ObjectsCollectedPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onObjectsCollected?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('MessageEmpty', (e) => {
-    const envelope = parseEnvelope<MessageEmptyPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onMessageEmpty?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('MessagePublished', (e) => {
-    const envelope = parseEnvelope<MessagePublishedPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onMessagePublished?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('MessageFailed', (e) => {
-    const envelope = parseEnvelope<MessageFailedPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onMessageFailed?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('SendingCompleted', (e) => {
-    const envelope = parseEnvelope<SendingCompletedPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onSendingCompleted?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('Error', (e) => {
-    const envelope = parseEnvelope<ErrorPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onError?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('Closed', (e) => {
-    const envelope = parseEnvelope<null>((e as MessageEvent).data);
-    if (envelope) handlers.onClosed?.(envelope.sendingId);
-  });
+  const attachListeners = (source: EventSource) => {
+    // --- Подписка на реальные события сервера ---
+    source.addEventListener('StatusChanged', (e) => {
+      const envelope = parseEnvelope<StatusChangedPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onStatusChanged?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('MessageCreated', (e) => {
+      const envelope = parseEnvelope<MessageCreatedPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onMessageCreated?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('ObjectsCollected', (e) => {
+      const envelope = parseEnvelope<ObjectsCollectedPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onObjectsCollected?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('MessageEmpty', (e) => {
+      const envelope = parseEnvelope<MessageEmptyPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onMessageEmpty?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('MessagePublished', (e) => {
+      const envelope = parseEnvelope<MessagePublishedPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onMessagePublished?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('MessageFailed', (e) => {
+      const envelope = parseEnvelope<MessageFailedPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onMessageFailed?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('SendingCompleted', (e) => {
+      const envelope = parseEnvelope<SendingCompletedPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onSendingCompleted?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('Error', (e) => {
+      const envelope = parseEnvelope<ErrorPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onError?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('Closed', (e) => {
+      const envelope = parseEnvelope<null>((e as MessageEvent).data);
+      if (envelope) handlers.onClosed?.(envelope.sendingId);
+    });
 
-  // <-- НОВЫЕ: Подписка на события Retry
-  eventSource.addEventListener('RetryMessageCreated', (e) => {
-    const envelope = parseEnvelope<RetryMessageCreatedPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onRetryMessageCreated?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('RetryObjectsCollected', (e) => {
-    const envelope = parseEnvelope<RetryObjectsCollectedPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onRetryObjectsCollected?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('RetryMessagePublished', (e) => {
-    const envelope = parseEnvelope<RetryMessagePublishedPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onRetryMessagePublished?.(envelope.sendingId, envelope.payload);
-  });
-  eventSource.addEventListener('RetryMessageEmpty', (e) => {
-    const envelope = parseEnvelope<RetryMessageEmptyPayload>((e as MessageEvent).data);
-    if (envelope) handlers.onRetryMessageEmpty?.(envelope.sendingId, envelope.payload);
-  });
-
-  // --- Обработка ошибок соединения ---
-  eventSource.onerror = (e) => {
-    handlers.onConnectionError?.(e);
-    if (eventSource.readyState === EventSource.CLOSED) {
-      eventSource.close();
-    }
+    // <-- НОВЫЕ: Подписка на события Retry
+    source.addEventListener('RetryMessageCreated', (e) => {
+      const envelope = parseEnvelope<RetryMessageCreatedPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onRetryMessageCreated?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('RetryObjectsCollected', (e) => {
+      const envelope = parseEnvelope<RetryObjectsCollectedPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onRetryObjectsCollected?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('RetryMessagePublished', (e) => {
+      const envelope = parseEnvelope<RetryMessagePublishedPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onRetryMessagePublished?.(envelope.sendingId, envelope.payload);
+    });
+    source.addEventListener('RetryMessageEmpty', (e) => {
+      const envelope = parseEnvelope<RetryMessageEmptyPayload>((e as MessageEvent).data);
+      if (envelope) handlers.onRetryMessageEmpty?.(envelope.sendingId, envelope.payload);
+    });
   };
 
-  return eventSource;
+  const attemptRecovery = async () => {
+    const newAuth = await refreshToken();
+    if (closedByUser) return;
+    if (!newAuth) {
+      unauthorized = true;
+      console.error('[SSE] Refresh токена не удался, соединение закрыто.');
+      handlers.onConnectionError?.(new Event('error'));
+      return;
+    }
+    open();
+  };
+
+  const open = () => {
+    recoveryAttempted = false;
+    eventSource = new EventSource(url, { withCredentials: true });
+    attachListeners(eventSource);
+    eventSource.onopen = () => {
+      everConnected = true;
+    };
+    eventSource.onerror = (e) => {
+      if (closedByUser) return;
+      if (eventSource?.readyState === EventSource.CONNECTING) {
+        handlers.onConnectionError?.(e);
+        return;
+      }
+      eventSource?.close();
+      eventSource = null;
+      if (!everConnected) {
+        unauthorized = true;
+        console.error('[SSE] Соединение отклонено (вероятно 401), повторные попытки отключены.');
+        handlers.onConnectionError?.(e);
+        return;
+      }
+      if (recoveryAttempted) {
+        unauthorized = true;
+        console.error('[SSE] Попытка восстановления уже исчерпана, соединение закрыто.');
+        handlers.onConnectionError?.(e);
+        return;
+      }
+      recoveryAttempted = true;
+      void attemptRecovery();
+      handlers.onConnectionError?.(e);
+    };
+  };
+
+  open();
+
+  return {
+    close: () => {
+      closedByUser = true;
+      eventSource?.close();
+      eventSource = null;
+    },
+    isUnauthorized: () => unauthorized
+  };
 };

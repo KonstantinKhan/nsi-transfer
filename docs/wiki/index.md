@@ -20,6 +20,7 @@
 - [[sync-flow]] — Процесс синхронизации данных из Полинома
 - [[cyrillic-encoding-fix]] — Фикс кодировки кириллических символов в RabbitMQ сообщениях
 - [[double-datetime-description-fix]] — Фикс: Description для Double и DateTime свойств в JSON (2026-09-21)
+- [[sse-auth-cookie-fix]] — Фикс: 401 на SSE и cookie-авторизация по HTTP (Secure-флаг, SameSite, EventSource) (2026-09-23)
 
 ### Управление репо
 - [[history-cleanup]] — Очистка кредов из истории, переписание коммитов (2026-09-21)
@@ -40,7 +41,9 @@
 
 ---
 
-**Последнее обновление:** 2026-09-23 (2) — [[docker-build-linux-amd64]] проверена end-to-end: cross-build через buildx на Mac/colima → перенос архива → запуск на реальном Linux-сервере отработал полностью. Заодно поправлены устаревшие команды (`docker-compose` → `docker compose`) и упрощена схема архива (один `docker save | gzip`, без `load.sh`).
+**Последнее обновление:** 2026-09-23 (3) — исправлена авторизация на HTTP-деплое: браузер отбрасывал Secure-cookie по plain HTTP → все запросы (включая SSE EventSource) падали с 401. `Secure = Request.IsHttps` в AuthController, query-токен `access_token` в SimpleBearerAuthenticationHandler (только GET SSE-эндпоинты), на фронте — refresh + переподключение SSE, баннер при неавторизованном SSE. Важно: UI открывать с того же хоста, что и API (SameSite=Lax). [[sse-auth-cookie-fix]]
+
+**Предыдущее обновление:** 2026-09-23 (2) — [[docker-build-linux-amd64]] проверена end-to-end: cross-build через buildx на Mac/colima → перенос архива → запуск на реальном Linux-сервере отработал полностью. Заодно поправлены устаревшие команды (`docker-compose` → `docker compose`) и упрощена схема архива (один `docker save | gzip`, без `load.sh`).
 
 **Предыдущее обновление:** 2026-09-23 — консолидированы `DEPLOY.md`/`HANDOFF.md`/`DOCKER-README.md` (корень репо) в [[deployment]], устаревшее описание build-time запекания `VITE_API_BASE_URL` убрано (актуально — рантайм-конфиг, см. [[environment]]). В корне остались только `AGENTS.md`/`CLAUDE.md`.
 
