@@ -92,6 +92,38 @@ New-NetFirewallRule -DisplayName "RabbitMQ 5672 for Docker" -Direction Inbound -
 
 Рестарт контейнеров не нужен.
 
+## 4.1 Права на bind-mount каталоги (config-data, logs)
+
+Симптом: сохранение конфига через UI падает `Access to the path '/app/config-data/configuration.json.tmp' is denied`, при этом сам `configuration.json` читается нормально.
+
+Механика:
+
+1. Бэк в контейнере работает **не от root**: в `Dockerfile` — `USER $APP_UID`. В официальных .NET-образах
+   (`mcr.microsoft.com/dotnet/aspnet:8.0`) это юзер `app` с uid/gid **1654** (`ENV APP_UID=1654`, константа образа).
+2. Bind mount **пробрасывает владельца и права хоста в контейнер как есть** — «внутри докера» и «на хосте»
+   это одни и те же файлы.
+3. Сохранение конфига атомарно (`JsonConfigurationWriter.WriteAtomicAsync`): создаётся **новый** файл
+   `configuration.json.tmp`, затем `File.Move` поверх основного. Обе операции требуют **w на каталог**
+   у uid 1654 — права на сам файл (`chmod 666`) не решают ничего.
+4. Если каталога на хосте нет, Docker создаёт его сам с владельцем **root** → приложение писать не может.
+
+Фикс (на хосте, где docker):
+
+```bash
+mkdir -p backend/config backend/logs        # каталоги создать ДО `up`
+cp backend/nsitransfer/config/configuration.json backend/config/   # при первом запуске
+sudo chown -R 1654:1654 backend/config backend/logs
+docker compose up -d --build
+```
+
+Важные свойства:
+
+- `chown` именно (смена владельца), не `chmod 777` (дыра для всего хоста)
+- владелец хост-каталога переживает `down/up`, `--build`, пересоздание контейнера — фикс одноразовый
+- `chmod`/`chown` через `docker exec` **не персистентны** для каталогов из слоя контейнера и сбиваются
+  при пересоздании; для bind mount они меняют хост-файлы, но делать это надо сразу на хосте
+- проверить uid процесса: `docker exec nsitransfer_server id` → `uid=1654(app) gid=1654(app)`
+
 ## 5. Проверка работы
 
 1. **Контейнеры подняты:**
@@ -135,6 +167,7 @@ New-NetFirewallRule -DisplayName "RabbitMQ 5672 for Docker" -Direction Inbound -
 | Фронт открылся, но API-запросы падают / логин ок с одной машины, не работает с другой | `VITE_API_BASE_URL=localhost` вместо IP машины | поставить IP в `.env`, `docker compose up -d --force-recreate nsitransferfront` (без ребилда) |
 | `port is already allocated` | Заняты 8080/5173 | сменить `BACKEND_PORT`/`FRONTEND_PORT` |
 | Сохранение конфига через UI → `Device or resource busy: /app/...json` | Атомарная запись (`File.Move`) поверх single-file bind mount невозможна | монтировать директорию + `CONFIG_FILE_PATH` (уже сделано в compose) |
+| Сохранение конфига через UI → `Access to the path '/app/config-data/configuration.json.tmp' is denied` | У uid 1654 нет **записи на каталог** `backend/config` на хосте (создание tmp + rename требуют w на каталог; владелец — root или юзер хоста) | `sudo chown -R 1654:1654 backend/config backend/logs` на хосте (см. п.4.1) |
 | `Не удалось опубликовать отправление ... в брокер сообщений` при живом порте 5672 | TCP есть, но auth/vhost/права падают. Чаще всего `guest` с не-localhost запрещён (loopback_users) | создать юзера: `rabbitmqctl add_user nsitransfer <pass>` + `set_permissions -p / nsitransfer ".*" ".*" ".*"`; на Windows CLI — полный путь `...\rabbitmq_server-3.12.8\sbin\rabbitmqctl.bat`, при ошибке node — выровнять Erlang cookie (`systemprofile\.erlang.cookie` → профиль юзера) или Management UI `localhost:15672` |
 | SMTP: `SslHandshakeException ... unexpected EOF` из контейнера | Режим TLS/порт не совпадают с сервером; либо relay режет STARTTLS из docker-подсетей | проба из docker-сети: `docker run --rm curlimages/curl -v smtp://<host>:<port>`; рабочий вариант для smtp.ascon.ru: `Port=25`, `UseSsl=false` (587 обрывает STARTTLS из контейнера, 465 недоступен из docker-сети) |
 
@@ -171,6 +204,10 @@ docker compose down --rmi all  # остановить + удалить обра�
   `configuration.json` настраивается env `CONFIG_FILE_PATH` (`WebApplicationBuilderExtensions`,
   `JsonConfigurationWriter`), compose монтирует директорию `config` → `/app/config-data` вместо
   одиночного файла.
+- Сохранение конфигурации через UI в Docker падало `Access to the path ... .tmp is denied` —
+  у uid 1654 (`USER $APP_UID`, юзер `app` из .NET-образа) не было w на bind-mount каталог
+  `backend/config` (создание `configuration.json.tmp` + `File.Move` требуют записи на каталог).
+  Фикс: `sudo chown -R 1654:1654 backend/config backend/logs` на хосте (2026-09-24, см. п.4.1).
 - Backend `Dockerfile`: SDK-стадия собирается нативно (`--platform=$BUILDPLATFORM`) с
   кросс-компиляцией под целевую архитектуру (`-a $TARGETARCH`) — иначе сборка `linux/amd64` на
   arm64-хосте (Mac/colima) виснет на `dotnet restore` под QEMU-эмуляцией (2026-09-22). Подробности

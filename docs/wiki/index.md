@@ -40,7 +40,9 @@
 
 ---
 
-**Последнее обновление:** 2026-09-23 (2) — [[docker-build-linux-amd64]] проверена end-to-end: cross-build через buildx на Mac/colima → перенос архива → запуск на реальном Linux-сервере отработал полностью. Заодно поправлены устаревшие команды (`docker-compose` → `docker compose`) и упрощена схема архива (один `docker save | gzip`, без `load.sh`).
+**Последнее обновление:** 2026-09-24 — в [[deployment]] добавлен раздел 4.1 «Права на bind-mount каталоги»: сохранение конфига через UI падало `Access to the path ... .tmp is denied`, т.к. у uid 1654 (юзер `app` из .NET-образа, `USER $APP_UID`) не было записи на каталог `backend/config` — атомарная запись создаёт tmp-файл и делает rename, что требует w на каталог, а не на файл. Фикс: `chown -R 1654:1654` на хосте, переживает down/up. В [[environment]] расширен раздел «Логирование»: файловый sink Serilog выключен по умолчанию (`UseFileLogging=false`), как включить через `.env`, пути/retention/автоочистка.
+
+**Предыдущее обновление:** 2026-09-23 (2) — [[docker-build-linux-amd64]] проверена end-to-end: cross-build через buildx на Mac/colima → перенос архива → запуск на реальном Linux-сервере отработал полностью. Заодно поправлены устаревшие команды (`docker-compose` → `docker compose`) и упрощена схема архива (один `docker save | gzip`, без `load.sh`).
 
 **Предыдущее обновление:** 2026-09-23 — консолидированы `DEPLOY.md`/`HANDOFF.md`/`DOCKER-README.md` (корень репо) в [[deployment]], устаревшее описание build-time запекания `VITE_API_BASE_URL` убрано (актуально — рантайм-конфиг, см. [[environment]]). В корне остались только `AGENTS.md`/`CLAUDE.md`.
 

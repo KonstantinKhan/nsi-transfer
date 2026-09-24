@@ -88,11 +88,36 @@ docker compose up -d --force-recreate nsitransferfront
 
 ## Логирование
 
+Механизм — Serilog, настраивается в `WebApplicationBuilderExtensions.ConfigureLogging()`.
+Два санка:
+
+- **Консоль** — всегда (видно через `docker compose logs nsitransfer`)
+- **Файл** — только при `UseFileLogging=true` (в `appsettings.json` по умолчанию `false`,
+  в `.env` по умолчанию не задан → в Docker по умолчанию пишется только в консоль)
+
+Переменные:
+
 | Переменная | Значение | Описание |
 |------------|----------|---------|
 | `LoggingConfig__UseFileLogging` | `false` | Логирование в файлы |
-| `LoggingConfig__LOGS_MAX_FOLDER_SIZE_BYTES` | `104857600` | Макс размер папки логов (100 МБ) |
+| `LoggingConfig__LOGS_MAX_FOLDER_SIZE_BYTES` | `104857600` | Макс размер папки логов (100 МБ); 0 = автоочистка выключена |
 | `LoggingConfig__LOGS_CLEANUP_INTERVAL_SECONDS` | `300` | Интервал очистки логов |
+
+Файловый режим (в Docker):
+
+- путь: `/app/Logs/log-YYYYMMDD.txt` — rolling по дням (`RollingInterval.Day`); маунт `./backend/logs:/app/Logs`
+  → файлы на хосте в `backend/logs/`
+- хранение: 62 файла (`retainedFileCountLimit`); автоочистка папки по лимиту 100 МБ, проверка раз в 300 сек
+- уровни: `Debug`+ для приложения; `Microsoft*` — Warning; EF Core SQL — только Error
+- каталог `backend/logs` должен принадлежать uid 1654 (см. [[deployment]], п.4.1)
+
+Включение — добавить в `.env` (в любое место, порядок не важен):
+
+```bash
+LoggingConfig__UseFileLogging=true
+```
+
+затем `docker compose up -d` — **`restart` не перечитывает `.env`**.
 
 ## Приоритет конфигурации
 
