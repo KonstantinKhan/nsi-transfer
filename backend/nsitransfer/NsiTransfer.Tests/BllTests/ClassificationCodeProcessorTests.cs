@@ -62,10 +62,14 @@ namespace NsiTransfer.Tests.BllTests // Рекомендуется добави�
                 
             _unitOfWorkMock.Setup(u => u.PolynomObjectFailures).Returns(failureRepoMock.Object);
 
+            var targetRefNodeMock = new Mock<IOptionsMonitor<Contract.ConfigModels.TargetReferenceNode>>();
+            targetRefNodeMock.Setup(o => o.CurrentValue).Returns(new Contract.ConfigModels.TargetReferenceNode());
+
             _processor = new ClassificationCodeProcessor(
                 _polynomApiServiceMock.Object,
                 _unitOfWorkMock.Object,
                 _optionsMock.Object,
+                targetRefNodeMock.Object,
                 NullLogger<ClassificationCodeProcessor>.Instance);
         }
 
