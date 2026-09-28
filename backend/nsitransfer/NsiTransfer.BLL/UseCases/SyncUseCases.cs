@@ -414,8 +414,13 @@ internal class SyncUseCases : ISyncUseCases
 
         try
         {
+            // EmptySending учитываем наравне с Completed: окно поиска у него тоже отработало полностью,
+            // просто изменений не нашлось. Если считать watermark'ом только Completed, серия из
+            // EmptySending-синков (без единого найденного объекта) не продвигает точку отсчёта вообще —
+            // и при обрыве следующего синка (см. StaleSendingRecoveryService) период отката упадёт на
+            // DateTime.UtcNow вместо реального последнего валидного окна, теряя изменения.
             var lastCompletedSending = await _unitOfWork.Sendings.FirstOrDefaultAsync(
-                predicate: s => s.StatusId == SendingStatusEnum.Completed
+                predicate: s => (s.StatusId == SendingStatusEnum.Completed || s.StatusId == SendingStatusEnum.EmptySending)
                     && s.TargetReferenceNode.ObjectId == _targetRefNode.CurrentValue.TargetReferenceNodeObjectId
                     && s.TargetReferenceNode.TypeId == _targetRefNode.CurrentValue.TargetReferenceNodeTypeId,
                 orderBy: sq => sq.OrderByDescending(s => s.EndedAt),
