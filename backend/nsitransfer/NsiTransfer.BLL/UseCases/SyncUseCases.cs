@@ -425,7 +425,14 @@ internal class SyncUseCases : ISyncUseCases
             // период с текущего момента, а не с DateTime.MinValue. Иначе первый запуск воспринимает ВСЮ историю
             // изменений справочника как "diff за период" и пытается отправить в брокер всё хранилище целиком.
             // Если реально нужен полный первичный бэкфилл — см. docs/wiki/sync-flow.md, раздел про первый запуск.
-            var rawTime = lastCompletedSending?.EndedAt ?? DateTime.UtcNow;
+            //
+            // Берём InitiatedAt, а не EndedAt: окно поиска предыдущего Sending заканчивалось на
+            // InitiatedAt + 1мин (см. upperTimeEdge ниже), а не на его EndedAt — сбор и отправка после
+            // этого могут идти ещё долго. Если стартовать следующий период с EndedAt, изменения, попавшие
+            // в Полином между концом окна поиска и фактическим завершением синка, не увидит ни текущий,
+            // ни следующий Sending. Старт с InitiatedAt даёт небольшой безопасный повторный скан (~1 мин),
+            // но гарантированно не теряет изменения.
+            var rawTime = lastCompletedSending?.InitiatedAt ?? DateTime.UtcNow;
             lastCollectionStartedAt = rawTime.AddTicks((TimeSpan.TicksPerSecond - (rawTime.Ticks % TimeSpan.TicksPerSecond)) % TimeSpan.TicksPerSecond);
         }
         catch (Exception ex)
