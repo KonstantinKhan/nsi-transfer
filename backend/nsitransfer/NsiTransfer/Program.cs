@@ -77,6 +77,9 @@ namespace NsiTransfer
 
 
             // Presentation
+            // Регистрация до PolynomApiSyncBackgroundService важна: хост-сервисы стартуют последовательно,
+            // это гарантирует снятие блокировки от зависших Sending до первой попытки новой синхронизации.
+            builder.Services.AddHostedService<StaleSendingRecoveryService>();
             builder.Services.AddHostedService<PolynomApiSyncBackgroundService>();
 
             // BLL
